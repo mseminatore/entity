@@ -3,7 +3,9 @@
 #include <vector>
 
 using Entity = std::uint64_t;
+constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
 
+#include "component_props.h"
 #include "archetype.h"
 
 using EntityIndex = std::uint32_t;
@@ -33,7 +35,7 @@ private:
 	std::vector<EntityIndex> freeEntityList;	// list of free entity indices for reuse
 
 public:
-	Entity create(Archetype* archetype, std::size_t rowIndex) {
+	Entity create(Archetype* archetype, std::size_t row) {
 		EntityIndex index;
 
 		// Reuse an index from the free list if available, otherwise create a new index
@@ -47,7 +49,7 @@ public:
 
 		EntityGeneration generation = entityDataTable[index].generation;
 		Entity entity = (static_cast<Entity>(generation) << 32) | index;
-		entityDataTable[index] = { generation, archetype, rowIndex, true };
+		entityDataTable[index] = { generation, archetype, row, true };
 
 		return entity;
 	}
@@ -63,13 +65,30 @@ public:
 		return entityDataTable[index].isAlive && entityGeneration(entity) == entityDataTable[index].generation;
 	}
 
-	EntityData & getEntityData(Entity entity) {
+	EntityData& record(Entity entity) {
+		assert(isAlive(entity));	// ensure the entity is alive before accessing its record
+
 		EntityIndex index = entityIndex(entity);
 		return entityDataTable[index];
 	}
 
-	void destroyEntity(Entity entity) {
-		auto& data = getEntityData(entity);
+	void setLocation(Entity entity, Archetype* archetype, std::size_t row) {
+		EntityIndex index = entityIndex(entity);
+		entityDataTable[index].archetype = archetype;
+		entityDataTable[index].rowIndex = row;
+	}
+
+	// Update the row index of an entity in the entity data table
+	void updateRow(Entity entity, std::size_t newRow) {
+		record(entity).rowIndex = newRow;
+	}
+
+	// Destroy an entity by marking it as dead and incrementing its generation
+	void destroy(Entity entity) {
+		auto& data = record(entity);
+		data.isAlive = false;
+		data.generation++;
+		freeEntityList.push_back(entityIndex(entity));
 	}
 };
 
@@ -83,21 +102,27 @@ private:
 	ArchetypeRegistry archetypeRegistry;	// registry of archetypes, indexed by archetype id
 
 public:
-    Entity createEntity() {
+    Entity create() {
 		Archetype &empty = archetypeRegistry.empty();		// initial archetype for new entities
 		Entity e = entityTable.create(&empty, 0);			// create a new entity in the entity table
-		std::size_t row = empty.push_uninitialized_row(e);	// add the entity to the empty archetype
-		entityTable.setLocation(e, &empty, row);			// 
+		std::size_t row = empty.pushUninitializedRow(e);	// add the entity to the empty archetype
+		entityTable.setLocation(e, &empty, row);			// set the entity's location in the entity table
 
 		return e;
 	}
 
-	void destroyEntity(Entity entity) {
-		assert(isEntityAlive(e));
-		EntityData& recode = entityTable.record(e);
-		Entity moved = record.archetype->removeRow(recode.row);
+	// Destroy an entity by removing it from its archetype and marking it as dead in the entity table
+	void destroy(Entity entity) {
+		assert(isEntityAlive(entity));
 
-		if (moved != )
+		EntityData& record = entityTable.record(entity);
+		Entity moved = record.archetype->removeRow(record.rowIndex);
+
+		if (moved != NullEntity) {
+			entityTable.updateRow(moved, record.rowIndex);
+		}
+
+		entityTable.destroy(entity);
 	}
 
 	bool isEntityAlive(Entity entity) { return entityTable.isAlive(entity); }
