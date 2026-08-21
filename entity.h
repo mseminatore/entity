@@ -232,7 +232,7 @@ public:
 		for (ComponentId id : to.type_ids()) {
 			int src_idx = from.columnIndexOf(id);
 			int dst_idx = to.columnIndexOf(id);
-			from.column(src_idx).ops()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+			from.column(src_idx).getOps()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
 		}
 
 		from.column(from.columnIndexOf(removed_id)).destroyAt(old_row);
