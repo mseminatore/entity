@@ -135,7 +135,7 @@ private:
 	}
 
 	// Overload: lambda accepts (Entity, Components&...)
-	template<typename Func, typename... Components, std::size_t N, std::size_t... I>
+	template<typename Func, std::size_t N, std::size_t... I>
 	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
 		std::size_t row, std::index_sequence<I...>)
 		-> decltype(func(std::declval<Entity>(), *static_cast<Components*>(nullptr)...), void())
