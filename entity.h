@@ -127,12 +127,67 @@ public:
 
 	bool isEntityAlive(Entity entity) { return entityTable.isAlive(entity); }
 
-	// add a component to an entity and return a reference to it
-	template<typename ComponentType>
-	ComponentType& addComponent(Entity entity, ComponentType component = ComponentType()) { /* Implementation */ }
+	// add a component of type T to an entity, moving it to a new archetype if necessary
+	template <typename T, typename... Args>
+	T& add(Entity e, Args&&... args) {
+		assert(isEntityAlive(e));
 
-	// get a reference to a component of an entity
-	template<typename ComponentType>
-	ComponentType& getComponent(Entity entity) { /* Implementation */ }
+		EntityData& record = entityTable.record(e);
+		Archetype& from = *record.archetype;
+		ComponentId added_id = ComponentType::get<T>();
+
+		assert(!from.contains(added_id) && "component already present on entity");
+
+		Archetype& to = archetypeRegistry.addTarget(from, added_id, get_component_ops<T>());
+		std::size_t old_row = record.rowIndex;
+		std::size_t new_row = to.pushUninitializedRow(e);
+
+		for (ComponentId id : from.type_ids()) {
+			int src_idx = from.columnIndexOf(id);
+			int dst_idx = to.columnIndexOf(id);
+			from.column(src_idx).ops()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+		}
+
+		int new_col_idx = to.columnIndexOf(added_id);
+		void* slot = to.column(new_col_idx).at(new_row);
+		T* value = new (slot) T(std::forward<Args>(args)...);
+
+		Entity moved = from.finishRemovingRow(old_row);
+		if (moved != NullEntity) 
+			entityTable.updateRow(moved, old_row);
+
+		entityTable.setLocation(e, &to, new_row);
+
+		return *value;
+	}
+
+	template <typename T>
+	void remove(Entity e) {
+		assert(isEntityAlive(e));
+		
+		EntityData& record = entityTable.record(e);
+		Archetype& from = *record.archetype;
+		ComponentId removed_id = ComponentType::get<T>();
+		
+		assert(from.contains(removed_id) && "component not present on entity");
+
+		Archetype& to = archetypeRegistry.removeTarget(from, removed_id);
+		std::size_t old_row = record.rowIndex;
+		std::size_t new_row = to.pushUninitializedRow(e);
+
+		for (ComponentId id : to.type_ids()) {
+			int src_idx = from.columnIndexOf(id);
+			int dst_idx = to.columnIndexOf(id);
+			from.column(src_idx).ops()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+		}
+
+		from.column(from.columnIndexOf(removed_id)).destroyAt(old_row);
+		Entity moved = from.finishRemovingRow(old_row);
+
+		if (moved != NullEntity) 
+			entityTable.updateRow(moved, old_row);
+
+		entityTable.setLocation(e, &to, new_row);
+	}
 };
 

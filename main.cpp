@@ -67,14 +67,14 @@ void initializeGame(EntityManager& entityManager, EntityList& entities)
 {
 	// Initialize game entities and components
 	Entity rock = entityManager.create();
-	entityManager.addComponent<Position>(rock, Position{ 10.0f, 0.0f });
-	entityManager.addComponent<Radius>(rock, Radius{ 5.0f });
+	entityManager.add<Position>(rock, Position{ 10.0f, 0.0f });
+	entityManager.add<Radius>(rock, Radius{ 5.0f });
 	entities.push_back(rock);
 
 	Entity missile = entityManager.create();
-	entityManager.addComponent<Position>(missile, Position{ 0.0f, 5.0f });
-	entityManager.addComponent<Velocity>(missile, Velocity{ 1.0f, 0.0f });
-	entityManager.addComponent<Radius>(missile, Radius{ 1.0f });
+	entityManager.add<Position>(missile, Position{ 0.0f, 5.0f });
+	entityManager.add<Velocity>(missile, Velocity{ 1.0f, 0.0f });
+	entityManager.add<Radius>(missile, Radius{ 1.0f });
 	entities.push_back(missile);
 }
 

@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <new>
 #include <unordered_map>
+#include <memory>
 
 //-----------------------------------------------------------------------------------------------------------
 // storage for a single component type, which is a vector of component data for each entity in the archetype
@@ -8,6 +9,9 @@
 class Column
 {
 private:
+	constexpr static std::size_t MinCapacity = 4;	// minimum capacity for a column, to avoid frequent reallocations
+	constexpr static std::size_t GrowthFactor = 2;	// factor by which to grow the column capacity when needed
+
 	std::byte* data = nullptr;
 	std::size_t count = 0;
 	std::size_t capacity = 0;
@@ -15,7 +19,7 @@ private:
 
 	// grow storage by doubling
 	void grow() {
-		std::size_t new_capacity = capacity == 0 ? 4 : capacity * 2;
+		std::size_t new_capacity = capacity == 0 ? MinCapacity : capacity * GrowthFactor;
 		auto* new_data = static_cast<std::byte*>(::operator new(new_capacity * ops->size, std::align_val_t{ ops->alignment }));
 
 		for (auto i = 0; i < count; i++) {
@@ -47,8 +51,10 @@ public:
 	Column(const ComponentOps* ops) : ops(ops) {}
 
 	virtual ~Column() { release(); }
+
 	std::size_t size() const { return count; }
-	
+	const ComponentOps* getOps() const noexcept { return ops; }
+
 	void* at(std::size_t row) { return data + row * ops->size; }
 
 	void* pushUninitialized() {
@@ -86,10 +92,9 @@ private:
 	std::vector<Column> columns;				// storage for each component type in the archetype
 	std::vector<Entity> entities;				// list of entities in this archetype
 
+public:
 	std::unordered_map<ComponentId, Archetype*> addEdge;
 	std::unordered_map<ComponentId, Archetype*> removeEdge;
-
-public:
 
 	Archetype(std::vector<ComponentId> ids, const std::vector<const ComponentOps*>& ops) {
 		componentTypes = std::move(ids);
@@ -103,6 +108,7 @@ public:
 	}
 
 	std::size_t size() const { return entities.size(); }
+	const std::vector<ComponentId>& type_ids() const noexcept { return componentTypes; }
 
 	int columnIndexOf(ComponentId id) const {
 		for (auto i = 0; i < componentTypes.size(); ++i) {
@@ -124,6 +130,8 @@ public:
 		}
 		return true;
 	}
+
+	Column& column(std::size_t index) { return columns[index]; }
 
 	std::size_t columnCount() const { return columns.size(); }
 
@@ -164,6 +172,19 @@ public:
 	}
 };
 
+using Signature = std::vector<ComponentId>;
+
+struct SignatureHash {
+	std::size_t operator()(const Signature& sig) const noexcept {
+		std::size_t h = sig.size();
+		for (ComponentId id : sig) {
+			// 64-bit variant of boost::hash_combine.
+			h ^= id + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
+		}
+		return h;
+	}
+};
+
 //--------------------------------------------------------------------------------------------
 //
 //--------------------------------------------------------------------------------------------
@@ -171,7 +192,76 @@ class ArchetypeRegistry
 {
 private:
 	Archetype *emptyArchetype = nullptr;	// archetype with no components, used for new entities
+	std::vector<std::unique_ptr<Archetype>> archetypes;
+	std::unordered_map<Signature, Archetype*, SignatureHash> signatures;
+
+	Archetype& get_or_create(const Signature& sig, const std::vector<const ComponentOps*>& ops) {
+		auto it = signatures.find(sig);
+		if (it != signatures.end()) return *it->second;
+		return create(sig, ops);
+	}
+
+	Archetype& create(Signature sig, const std::vector<const ComponentOps*>& ops) {
+		auto archetype = std::make_unique<Archetype>(sig, ops);
+		Archetype* raw = archetype.get();
+		archetypes.push_back(std::move(archetype));
+		signatures.emplace(std::move(sig), raw);
+		return *raw;
+	}
 
 public:
+	ArchetypeRegistry() {
+		emptyArchetype = &create({}, {});
+	}
+
 	Archetype& empty() { return *emptyArchetype; }
+
+	// Returns the archetype reached from `from` by adding component
+	// `added_id` (whose ops are `added_ops`), creating it if necessary.
+	Archetype& addTarget(Archetype& from, ComponentId added_id, const ComponentOps* added_ops) {
+		auto cached = from.addEdge.find(added_id);
+		if (cached != from.addEdge.end()) 
+			return *cached->second;
+
+		Signature target_sig = from.type_ids();
+		auto insert_at = std::lower_bound(target_sig.begin(), target_sig.end(), added_id);
+		target_sig.insert(insert_at, added_id);
+
+		std::vector<const ComponentOps*> ops;
+		ops.reserve(target_sig.size());
+
+		for (ComponentId id : target_sig) {
+			ops.push_back(id == added_id ? added_ops : from.column(from.columnIndexOf(id)).getOps());
+		}
+
+		Archetype& to = get_or_create(target_sig, ops);
+		from.addEdge[added_id] = &to;
+		to.removeEdge[added_id] = &from;
+		return to;
+	}
+
+	// Returns the archetype reached from `from` by removing component
+	// `removed_id`, creating it if necessary. All ops needed are already
+	// known (they come from `from`'s own columns).
+	Archetype& removeTarget(Archetype& from, ComponentId removed_id) {
+		auto cached = from.removeEdge.find(removed_id);
+		if (cached != from.removeEdge.end()) return *cached->second;
+
+		Signature target_sig;
+		std::vector<const ComponentOps*> ops;
+		target_sig.reserve(from.type_ids().size() - 1);
+		ops.reserve(target_sig.capacity());
+		for (ComponentId id : from.type_ids()) {
+			if (id == removed_id) continue;
+			target_sig.push_back(id);
+			ops.push_back(from.column(from.columnIndexOf(id)).getOps());
+		}
+
+		Archetype& to = get_or_create(target_sig, ops);
+		from.removeEdge[removed_id] = &to;
+		to.addEdge[removed_id] = &from;
+		return to;
+	}
+
+	const std::vector<std::unique_ptr<Archetype>>& all() const noexcept { return archetypes; }
 };
