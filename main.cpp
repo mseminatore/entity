@@ -5,13 +5,17 @@
 
 using EntityList = std::vector<Entity>;
 
-//
+//--------------------------------------------------------------------------------------------
+// collision detection system 
+//--------------------------------------------------------------------------------------------
 void collisionSystem(EntityManager& entityManager, EntityList& entities)
 {
 	// Check for collisions between entities with position components
 }
 
-//
+//--------------------------------------------------------------------------------------------
+// update position of entities based on their velocity components
+//--------------------------------------------------------------------------------------------
 void movementSystem(EntityManager& entityManager, EntityList& entities)
 {
 	// Update all entities with a position and velocity component
@@ -27,7 +31,9 @@ void movementSystem(EntityManager& entityManager, EntityList& entities)
 	}
 }
 
+//--------------------------------------------------------------------------------------------
 // update entities in the game world
+//--------------------------------------------------------------------------------------------
 void update(EntityManager& entityManager, EntityList& entities)
 {
 	// Update all entities
@@ -35,6 +41,9 @@ void update(EntityManager& entityManager, EntityList& entities)
 	collisionSystem(entityManager, entities);
 }
 
+//--------------------------------------------------------------------------------------------
+// render system
+//--------------------------------------------------------------------------------------------
 void render(EntityManager& entityManager, EntityList& entities)
 {
 	// Render all entities with a position component
@@ -48,11 +57,17 @@ void render(EntityManager& entityManager, EntityList& entities)
 	}
 }
 
+//--------------------------------------------------------------------------------------------
+//
+//--------------------------------------------------------------------------------------------
 void handleInput(EntityManager& entityManager, EntityList& entities)
 {
 	// Handle user input and update entities accordingly
 }
 
+//--------------------------------------------------------------------------------------------
+//
+//--------------------------------------------------------------------------------------------
 void gameLoop(EntityManager& entityManager, EntityList& entities)
 {
 	while (true)
@@ -63,6 +78,9 @@ void gameLoop(EntityManager& entityManager, EntityList& entities)
 	}
 }
 
+//--------------------------------------------------------------------------------------------
+// setup of the game world and entities. could be loaded from a file or procedurally generated
+//--------------------------------------------------------------------------------------------
 void initializeGame(EntityManager& entityManager, EntityList& entities)
 {
 	// Initialize game entities and components
@@ -78,7 +96,9 @@ void initializeGame(EntityManager& entityManager, EntityList& entities)
 	entities.push_back(missile);
 }
 
+//--------------------------------------------------------------------------------------------
 // main entry point for the application
+//--------------------------------------------------------------------------------------------
 int main(int argc, char *argv[])
 {
 	EntityManager entityManager;
