@@ -17,8 +17,18 @@ struct Radius
 	float r;
 };
 
+struct Health
+{
+	float hp;
+};
+
 struct Bounds
 {
 	float width;
 	float height;
+};
+
+struct Name
+{
+	//std::string name;
 };

@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <cstdint>
 #include <vector>
 
@@ -9,11 +10,11 @@ using EntityIndex = std::uint32_t;
 using EntityGeneration = std::uint32_t;
 
 EntityIndex entityIndex(Entity entity)				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
-EntityGeneration entityGeneration(Entity entity)	{ return static_cast<EntityGeneration>((entity >> 32) & 0xFFFFFFFF); }
+EntityGeneration entityGeneration(Entity entity)	{ return static_cast<EntityGeneration>(entity >> 32); }
 
-//---------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
 // A record of entity data, including its generation, archetype, row index and alive status
-//---------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------
 struct EntityData
 {
 	EntityGeneration generation = 0;
@@ -52,8 +53,13 @@ public:
 	}
 
 	bool isAlive(Entity entity) {
-		EntityIndex index = entityIndex(entity);
-		if (index >= entityDataTable.size()) return false;
+		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
+
+		// check bounds
+		if (index >= entityDataTable.size()) 
+			return false;
+
+		// check that object is alive and that generation matches
 		return entityDataTable[index].isAlive && entityGeneration(entity) == entityDataTable[index].generation;
 	}
 
@@ -78,16 +84,20 @@ private:
 
 public:
     Entity createEntity() {
-		auto empty = archetypeRegistry.empty();		// initial archetype for new entities
-		Entity e = entityTable.create(&empty, 0);	// create a new entity in the entity table
-		std::size_t row = empty.addEntity(e);		// add the entity to the empty archetype
-
+		Archetype &empty = archetypeRegistry.empty();		// initial archetype for new entities
+		Entity e = entityTable.create(&empty, 0);			// create a new entity in the entity table
+		std::size_t row = empty.push_uninitialized_row(e);	// add the entity to the empty archetype
+		entityTable.setLocation(e, &empty, row);			// 
 
 		return e;
 	}
 
 	void destroyEntity(Entity entity) {
-		/* Implementation */ 
+		assert(isEntityAlive(e));
+		EntityData& recode = entityTable.record(e);
+		Entity moved = record.archetype->removeRow(recode.row);
+
+		if (moved != )
 	}
 
 	bool isEntityAlive(Entity entity) { return entityTable.isAlive(entity); }
