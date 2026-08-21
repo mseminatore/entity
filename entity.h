@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <cstdint>
 #include <vector>
+#include <array>
 
 using Entity = std::uint64_t;
 constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
@@ -93,6 +94,59 @@ public:
 };
 
 //----------------------------------------------------------------------------------
+// Query class allows iteration over entities with specific component types
+//----------------------------------------------------------------------------------
+template <typename... Components>
+class Query {
+public:
+	explicit Query(ArchetypeRegistry& registry) : registry_(&registry) {}
+
+	template <typename Func>
+	void for_each(Func&& func) {
+		constexpr std::size_t n = sizeof...(Components);
+		std::array<ComponentId, n> wanted{ ComponentType::get<Components>()... };
+
+		for (const auto& archetype_ptr : registry_->all()) {
+			Archetype& archetype = *archetype_ptr;
+			std::array<int, n> column_index{};
+			bool matches = true;
+			for (std::size_t i = 0; i < n; ++i) {
+				int idx = archetype.columnIndexOf(wanted[i]);
+				if (idx < 0) {
+					matches = false;
+					break;
+				}
+				column_index[i] = idx;
+			}
+			if (!matches) continue;
+
+			std::size_t count = archetype.size();
+			for (std::size_t row = 0; row < count; ++row) {
+				invoke(func, archetype, column_index, row, std::index_sequence_for<Components...>{});
+			}
+		}
+	}
+
+private:
+	template <typename Func, std::size_t N, std::size_t... I>
+	static void invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::size_t row, std::index_sequence<I...>) {
+		func(*static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
+	}
+
+	// Overload: lambda accepts (Entity, Components&...)
+	template<typename Func, typename... Components, std::size_t N, std::size_t... I>
+	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::size_t row, std::index_sequence<I...>)
+		-> decltype(func(std::declval<Entity>(), *static_cast<Components*>(nullptr)...), void())
+	{
+		func(archetype.entityAt(row), *static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
+	}
+
+	ArchetypeRegistry* registry_;
+};
+
+//----------------------------------------------------------------------------------
 // EntityManager class manages the creation, lifetime and destruction of entities
 //----------------------------------------------------------------------------------
 class EntityManager
@@ -145,7 +199,7 @@ public:
 		for (ComponentId id : from.type_ids()) {
 			int src_idx = from.columnIndexOf(id);
 			int dst_idx = to.columnIndexOf(id);
-			from.column(src_idx).ops()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+			from.column(src_idx).getOps()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
 		}
 
 		int new_col_idx = to.columnIndexOf(added_id);
@@ -188,6 +242,19 @@ public:
 			entityTable.updateRow(moved, old_row);
 
 		entityTable.setLocation(e, &to, new_row);
+	}
+
+	template <typename T>
+	bool has(Entity e) {
+		assert(isEntityAlive(e));
+
+		const EntityData& rec = entityTable.record(e);
+		return rec.archetype->contains(ComponentType::get<T>());
+	}
+
+	template <typename... Components>
+	Query<Components...> query() {
+		return Query<Components...>(archetypeRegistry);
 	}
 };
 

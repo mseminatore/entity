@@ -1,4 +1,5 @@
 // Component definitions
+#include <string>
 
 struct Position
 {
@@ -30,5 +31,5 @@ struct Bounds
 
 struct Name
 {
-	//std::string name;
+	std::string value;
 };

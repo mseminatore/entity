@@ -170,6 +170,8 @@ public:
 		entities.pop_back();
 		return moved;
 	}
+
+	Entity entityAt(std::size_t row) const { return entities[row]; }
 };
 
 using Signature = std::vector<ComponentId>;
