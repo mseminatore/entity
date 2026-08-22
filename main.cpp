@@ -73,7 +73,7 @@ void render(EntityManager& entityManager)
 	});
 }
 
-constexpr int ESC_KEY = 27;
+constexpr int QUIT_KEY = 'q';
 
 //--------------------------------------------------------------------------------------------
 // handle user input
@@ -83,7 +83,7 @@ void handleInput(EntityManager& entityManager)
 	// Handle user input and update entities accordingly
 	int c = getchar(); // Wait for user input to proceed to the next frame
 
-	if (c == ESC_KEY)
+	if (c == QUIT_KEY)
 		done = true;
 }
 
