@@ -12,25 +12,30 @@ bool done = false;
 //--------------------------------------------------------------------------------------------
 void collisionSystem(EntityManager& entityManager)
 {
+	// we can't destroy entities while iterating over them, so we will store the entities to destroy in a separate vector
 	std::vector<Entity> toDestroy;
 
-	// Check for collisions between entities with position components
-	entityManager.query<Position, Radius, Name>().for_each([&entityManager](Position& p1, Radius& r1, Name& name1) {
-		entityManager.query<Position, Velocity, Radius, Name>().for_each([&](Position& p2, Velocity& v, Radius& r2, Name& name2) {
+	// N^2 check for collisions between entities with position components
+	entityManager.view<Position, Radius, Name>().for_each([&entityManager, &toDestroy](Position& p1, Radius& r1, Name& name1) {
+		entityManager.view<Position, Velocity, Radius, Name>().for_each([&](Entity e2, Position& p2, Velocity& v, Radius& r2, Name& name2) {
 			if (&p1 == &p2) return; // skip self
 			float dx = p1.x - p2.x;
 			float dy = p1.y - p2.y;
 			float distanceSquared = dx * dx + dy * dy;
 			float radiusSum = r1.r + r2.r;
 			if (distanceSquared < radiusSum * radiusSum) {
-				printf("Collision detected between %s and %s!\n", name1.value.c_str(), name2.value.c_str());
+				printf("Collision detected between '%s' and '%s'!\n", name1.value.c_str(), name2.value.c_str());
+				toDestroy.push_back(e2); // mark the second entity for destruction
 			}
 		});
 	});
 
+	// destroy all entities that were marked for destruction
 	for (Entity e : toDestroy) {
-		if (entityManager.isEntityAlive(e))
+		if (entityManager.isAlive(e)) {
+			printf("Destroying entity %llu due to collision.\n", e);
 			entityManager.destroy(e);
+		}
 	}
 }
 
@@ -40,7 +45,7 @@ void collisionSystem(EntityManager& entityManager)
 void movementSystem(EntityManager& entityManager)
 {
 	// Update all entities with a position and velocity component
-	entityManager.query<Position, Velocity>().for_each([](Position& p, Velocity& v) {
+	entityManager.view<Position, Velocity>().for_each([](Position& p, Velocity& v) {
 		p.x += v.vx;
 		p.y += v.vy;
 	});
@@ -61,22 +66,22 @@ void update(EntityManager& entityManager)
 //--------------------------------------------------------------------------------------------
 void render(EntityManager& entityManager)
 {
-	entityManager.query<Name, Position>().for_each([](Name &name, Position& p) {
-		printf("Rendering entity %s at position (%f, %f)\n", name.value.c_str(), p.x, p.y);
+	entityManager.view<Name, Position>().for_each([](Name &name, Position& p) {
+		printf("Rendering entity '%s' at position (%f, %f)\n", name.value.c_str(), p.x, p.y);
 	});
 }
 
 //--------------------------------------------------------------------------------------------
-//
+// handle user input
 //--------------------------------------------------------------------------------------------
 void handleInput(EntityManager& entityManager)
 {
 	// Handle user input and update entities accordingly
-	getchar(); // Wait for user input to proceed to the next frame
+	int c = getchar(); // Wait for user input to proceed to the next frame
 }
 
 //--------------------------------------------------------------------------------------------
-//
+// main game loop
 //--------------------------------------------------------------------------------------------
 void gameLoop(EntityManager& entityManager)
 {

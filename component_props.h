@@ -1,8 +1,12 @@
+//--------------------------------------------------------------------------------------------
+// Define the ComponentType and ComponentOps classes, which are used to manage component types
+// in an ECS (Entity-Component-System) architecture.
+//--------------------------------------------------------------------------------------------
 using ComponentId = std::size_t;
 
-//
-//
-//
+//--------------------------------------------------------------------------------------------
+// The ComponentType class generates unique identifiers for each component type
+//--------------------------------------------------------------------------------------------
 class ComponentType
 {
 private:
@@ -19,9 +23,11 @@ public:
     }
 };
 
-//
+//--------------------------------------------------------------------------------------------
 // Archetypes delegate typesafe component operations to this helper
-//
+// The ComponentOps struct defines operations for moving and destroying components
+// as well as their size and alignment. 
+//--------------------------------------------------------------------------------------------
 struct ComponentOps {
     void (*moveConstruct)(void* dst, void* src);
     void (*destroy)(void* ptr);
@@ -29,9 +35,10 @@ struct ComponentOps {
     std::size_t alignment;
 };
 
-//
-//
-//
+//--------------------------------------------------------------------------------------------
+// The get_component_ops function template returns a pointer to a ComponentOps instance for 
+// a given component type T.
+//--------------------------------------------------------------------------------------------
 template <typename T>
 const ComponentOps* get_component_ops() noexcept {
     static const ComponentOps ops{

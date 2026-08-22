@@ -16,7 +16,7 @@
 static bool test_create_is_alive() {
 	EntityManager em;
 	Entity e = em.create();
-	return em.isEntityAlive(e);
+	return em.isAlive(e);
 }
 
 static bool test_new_entity_has_no_components() {
@@ -29,7 +29,7 @@ static bool test_destroy_invalidates_entity() {
 	EntityManager em;
 	Entity e = em.create();
 	em.destroy(e);
-	return !em.isEntityAlive(e);
+	return !em.isAlive(e);
 }
 
 static bool test_recycled_index_gets_new_generation() {
@@ -41,8 +41,8 @@ static bool test_recycled_index_gets_new_generation() {
 	// index is reused, but generation advances so the old handle stays invalid
 	return entityIndex(e1) == entityIndex(e2)
 		&& e1 != e2
-		&& !em.isEntityAlive(e1)
-		&& em.isEntityAlive(e2);
+		&& !em.isAlive(e1)
+		&& em.isAlive(e2);
 }
 
 //------------------------------------------------------
@@ -80,7 +80,7 @@ static bool test_archetype_migration_preserves_earlier_component() {
 
 	bool ok = em.has<Position>(e) && em.has<Velocity>(e);
 
-	em.query<Position, Velocity>().for_each([&](Position& p, Velocity& v) {
+	em.view<Position, Velocity>().for_each([&](Position& p, Velocity& v) {
 		ok = ok && p.x == 7.0f && p.y == 8.0f && v.vx == 1.0f && v.vy == -1.0f;
 	});
 
@@ -100,7 +100,7 @@ static bool test_remove_preserves_other_components() {
 
 	bool ok = em.has<Position>(e) && em.has<Radius>(e) && !em.has<Velocity>(e);
 
-	em.query<Position, Radius>().for_each([&](Position& p, Radius& r) {
+	em.view<Position, Radius>().for_each([&](Position& p, Radius& r) {
 		ok = ok && p.x == 1.0f && p.y == 2.0f && r.r == 5.0f;
 	});
 
@@ -121,7 +121,7 @@ static bool test_non_trivial_component_round_trips() {
 	em.add<Position>(e, Position{ 0.0f, 0.0f });
 
 	bool ok = true;
-	em.query<Name>().for_each([&](Name& n) {
+	em.view<Name>().for_each([&](Name& n) {
 		ok = ok && n.value == "Rock";
 	});
 
@@ -129,9 +129,9 @@ static bool test_non_trivial_component_round_trips() {
 }
 
 //------------------------------------------------------
-// Query iteration
+// view iteration
 //------------------------------------------------------
-static bool test_query_visits_all_matching_entities() {
+static bool test_view_visits_all_matching_entities() {
 	EntityManager em;
 	std::vector<Entity> entities;
 
@@ -142,13 +142,13 @@ static bool test_query_visits_all_matching_entities() {
 		entities.push_back(e);
 	}
 
-	// an entity with only a Position should not match a Position+Velocity query
+	// an entity with only a Position should not match a Position+Velocity view
 	Entity extra = em.create();
 	em.add<Position>(extra, Position{ 100.0f, 100.0f });
 
 	int visited = 0;
-	em.query<Position, Velocity>().for_each([&](Position& p, Velocity& v) {
-		p.x += v.vx; // mutate through the query
+	em.view<Position, Velocity>().for_each([&](Position& p, Velocity& v) {
+		p.x += v.vx; // mutate through the view
 		++visited;
 	});
 
@@ -159,7 +159,7 @@ static bool test_query_visits_all_matching_entities() {
 	bool ok = true;
 	for (int i = 0; i < 5; ++i) {
 		bool found = false;
-		em.query<Position>().for_each([&](Entity e, Position& p) {
+		em.view<Position>().for_each([&](Entity e, Position& p) {
 			if (e == entities[static_cast<std::size_t>(i)]) {
 				found = true;
 				ok = ok && (p.x == static_cast<float>(i) + 1.0f);
@@ -175,7 +175,7 @@ static bool test_query_visits_all_matching_entities() {
 }
 
 // exercises the entity-aware for_each(Entity, Components&...) overload
-static bool test_query_entity_aware_overload_visits_expected_entities() {
+static bool test_view_entity_aware_overload_visits_expected_entities() {
 	EntityManager em;
 	std::vector<Entity> expected;
 
@@ -186,7 +186,7 @@ static bool test_query_entity_aware_overload_visits_expected_entities() {
 	}
 
 	std::vector<Entity> visited;
-	em.query<Health>().for_each([&](Entity e, Health& h) {
+	em.view<Health>().for_each([&](Entity e, Health& h) {
 		visited.push_back(e);
 		(void)h;
 	});
@@ -215,9 +215,9 @@ static bool test_destroy_preserves_sibling_component_data() {
 
 	em.destroy(b); // middle entity; c's row should be swapped into b's old row
 
-	bool ok = em.isEntityAlive(a) && !em.isEntityAlive(b) && em.isEntityAlive(c);
+	bool ok = em.isAlive(a) && !em.isAlive(b) && em.isAlive(c);
 
-	em.query<Position>().for_each([&](Entity e, Position& p) {
+	em.view<Position>().for_each([&](Entity e, Position& p) {
 		if (e == a) ok = ok && p.x == 1.0f && p.y == 1.0f;
 		if (e == c) ok = ok && p.x == 3.0f && p.y == 3.0f;
 	});
@@ -250,9 +250,9 @@ void test_main(int argc, char* argv[]) {
 	SUITE("Non-trivial component types");
 	TESTEX("a std::string component survives archetype migration", test_non_trivial_component_round_trips());
 
-	SUITE("Query iteration");
-	TESTEX("for_each visits exactly the matching entities", test_query_visits_all_matching_entities());
-	TESTEX("entity-aware for_each visits the expected entities", test_query_entity_aware_overload_visits_expected_entities());
+	SUITE("view iteration");
+	TESTEX("for_each visits exactly the matching entities", test_view_visits_all_matching_entities());
+	TESTEX("entity-aware for_each visits the expected entities", test_view_entity_aware_overload_visits_expected_entities());
 
 	SUITE("Removal / swap-remove semantics");
 	TESTEX("destroying a middle entity preserves its siblings' data", test_destroy_preserves_sibling_component_data());

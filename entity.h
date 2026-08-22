@@ -9,11 +9,11 @@ constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing 
 #include "component_props.h"
 #include "archetype.h"
 
-using EntityIndex = std::uint32_t;
-using EntityGeneration = std::uint32_t;
+using EntityIndex		= std::uint32_t;
+using EntityGeneration	= std::uint32_t;
 
 inline EntityIndex entityIndex(Entity entity)				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
-inline EntityGeneration entityGeneration(Entity entity)	{ return static_cast<EntityGeneration>(entity >> 32); }
+inline EntityGeneration entityGeneration(Entity entity)		{ return static_cast<EntityGeneration>(entity >> 32); }
 
 //-----------------------------------------------------------------------------------------
 // A record of entity data, including its generation, archetype, row index and alive status
@@ -94,40 +94,48 @@ public:
 };
 
 //----------------------------------------------------------------------------------
-// Query class allows iteration over entities with specific component types
+// EntityView class allows iteration over entities with specific component types
 //----------------------------------------------------------------------------------
 template <typename... Components>
-class Query {
+class EntityView {
 public:
-	explicit Query(ArchetypeRegistry& registry) : registry_(&registry) {}
+	explicit EntityView(ArchetypeRegistry& registry) : registry(&registry) {}
 
+	// Iterate over all entities with the specified component types and invoke the provided function
 	template <typename Func>
 	void for_each(Func&& func) {
 		constexpr std::size_t n = sizeof...(Components);
 		std::array<ComponentId, n> wanted{ ComponentType::get<Components>()... };
 
-		for (const auto& archetype_ptr : registry_->all()) {
+		for (const auto& archetype_ptr : registry->all()) {
 			Archetype& archetype = *archetype_ptr;
 			std::array<int, n> column_index{};
 			bool matches = true;
+
 			for (std::size_t i = 0; i < n; ++i) {
 				int idx = archetype.columnIndexOf(wanted[i]);
+				
 				if (idx < 0) {
 					matches = false;
 					break;
 				}
+				
 				column_index[i] = idx;
 			}
-			if (!matches) continue;
+
+			if (!matches) 
+				continue;
 
 			std::size_t count = archetype.size();
-			for (std::size_t row = 0; row < count; ++row) {
+			for (auto row = 0; row < count; row++) {
 				invoke(func, archetype, column_index, row, std::index_sequence_for<Components...>{});
 			}
 		}
 	}
 
 private:
+
+	// Overload: lambda accepts (Components&...)
 	template <typename Func, std::size_t N, std::size_t... I>
 	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
 		std::size_t row, std::index_sequence<I...>)
@@ -145,7 +153,7 @@ private:
 		func(archetype.entityAt(row), *static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
 	}
 
-	ArchetypeRegistry* registry_;
+	ArchetypeRegistry* registry;
 };
 
 //----------------------------------------------------------------------------------
@@ -169,7 +177,7 @@ public:
 
 	// Destroy an entity by removing it from its archetype and marking it as dead in the entity table
 	void destroy(Entity entity) {
-		assert(isEntityAlive(entity));
+		assert(isAlive(entity));
 
 		EntityData& record = entityTable.record(entity);
 		Entity moved = record.archetype->removeRow(record.rowIndex);
@@ -181,12 +189,12 @@ public:
 		entityTable.destroy(entity);
 	}
 
-	bool isEntityAlive(Entity entity) { return entityTable.isAlive(entity); }
+	bool isAlive(Entity entity) { return entityTable.isAlive(entity); }
 
 	// add a component of type T to an entity, moving it to a new archetype if necessary
 	template <typename T, typename... Args>
 	T& add(Entity e, Args&&... args) {
-		assert(isEntityAlive(e));
+		assert(isAlive(e));
 
 		EntityData& record = entityTable.record(e);
 		Archetype& from = *record.archetype;
@@ -219,7 +227,7 @@ public:
 
 	template <typename T>
 	void remove(Entity e) {
-		assert(isEntityAlive(e));
+		assert(isAlive(e));
 		
 		EntityData& record = entityTable.record(e);
 		Archetype& from = *record.archetype;
@@ -248,15 +256,15 @@ public:
 
 	template <typename T>
 	bool has(Entity e) {
-		assert(isEntityAlive(e));
+		assert(isAlive(e));
 
 		const EntityData& rec = entityTable.record(e);
 		return rec.archetype->contains(ComponentType::get<T>());
 	}
 
 	template <typename... Components>
-	Query<Components...> query() {
-		return Query<Components...>(archetypeRegistry);
+	EntityView<Components...> view() {
+		return EntityView<Components...>(archetypeRegistry);
 	}
 };
 
