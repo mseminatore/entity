@@ -2,6 +2,8 @@
 // Define the ComponentType and ComponentOps classes, which are used to manage component types
 // in an ECS (Entity-Component-System) architecture.
 //--------------------------------------------------------------------------------------------
+
+// define the type for component IDs
 using ComponentId = std::size_t;
 
 //--------------------------------------------------------------------------------------------

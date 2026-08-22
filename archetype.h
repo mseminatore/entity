@@ -191,21 +191,25 @@ struct SignatureHash {
 };
 
 //--------------------------------------------------------------------------------------------
-//
+// 
 //--------------------------------------------------------------------------------------------
 class ArchetypeRegistry
 {
 private:
-	Archetype *emptyArchetype = nullptr;	// archetype with no components, used for new entities
-	std::vector<std::unique_ptr<Archetype>> archetypes;
+	Archetype *emptyArchetype = nullptr;					// archetype with no components, used for new entities
+	std::vector<std::unique_ptr<Archetype>> archetypes;		// a list of existing Archetypes
+
+	// 
 	std::unordered_map<Signature, Archetype*, SignatureHash> signatures;
 
+	// find or create an Archetype having the given signature. Set the ops if creating a new one
 	Archetype& get_or_create(const Signature& sig, const std::vector<const ComponentOps*>& ops) {
 		auto it = signatures.find(sig);
 		if (it != signatures.end()) return *it->second;
 		return create(sig, ops);
 	}
 
+	// create and return a new Archetype having the given signature and ops
 	Archetype& create(Signature sig, const std::vector<const ComponentOps*>& ops) {
 		auto archetype = std::make_unique<Archetype>(sig, ops);
 		Archetype* raw = archetype.get();
@@ -268,5 +272,6 @@ public:
 		return to;
 	}
 
+	// return all existing archetypes
 	const std::vector<std::unique_ptr<Archetype>>& all() const noexcept { return archetypes; }
 };

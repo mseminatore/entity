@@ -36,6 +36,7 @@ private:
 	std::vector<EntityIndex> freeEntityList;	// list of free entity indices for reuse
 
 public:
+	// create an entity with the given archetype and add it to the table
 	Entity create(Archetype* archetype, std::size_t row) {
 		EntityIndex index;
 
@@ -50,6 +51,7 @@ public:
 
 		EntityGeneration generation = entityDataTable[index].generation;
 		Entity entity = (static_cast<Entity>(generation) << 32) | index;
+
 		entityDataTable[index] = { generation, archetype, row, true };
 
 		return entity;
@@ -112,7 +114,7 @@ public:
 			std::array<int, n> column_index{};
 			bool matches = true;
 
-			for (std::size_t i = 0; i < n; ++i) {
+			for (auto i = 0; i < n; ++i) {
 				int idx = archetype.columnIndexOf(wanted[i]);
 				
 				if (idx < 0) {
@@ -126,7 +128,7 @@ public:
 			if (!matches) 
 				continue;
 
-			std::size_t count = archetype.size();
+			auto count = archetype.size();
 			for (auto row = 0; row < count; row++) {
 				invoke(func, archetype, column_index, row, std::index_sequence_for<Components...>{});
 			}
@@ -169,7 +171,7 @@ public:
     Entity create() {
 		Archetype &empty = archetypeRegistry.empty();		// initial archetype for new entities
 		Entity e = entityTable.create(&empty, 0);			// create a new entity in the entity table
-		std::size_t row = empty.pushUninitializedRow(e);	// add the entity to the empty archetype
+		auto row = empty.pushUninitializedRow(e);	// add the entity to the empty archetype
 		entityTable.setLocation(e, &empty, row);			// set the entity's location in the entity table
 
 		return e;
@@ -197,63 +199,82 @@ public:
 		assert(isAlive(e));
 
 		EntityData& record = entityTable.record(e);
-		Archetype& from = *record.archetype;
-		ComponentId added_id = ComponentType::get<T>();
+		Archetype& current_archetype = *record.archetype;
+		ComponentId added_component_id = ComponentType::get<T>();
 
-		assert(!from.contains(added_id) && "component already present on entity");
+		assert(!current_archetype.contains(added_component_id) && "component already present on entity");
 
-		Archetype& to = archetypeRegistry.addTarget(from, added_id, get_component_ops<T>());
-		std::size_t old_row = record.rowIndex;
-		std::size_t new_row = to.pushUninitializedRow(e);
+		Archetype& new_archetype = archetypeRegistry.addTarget(current_archetype, added_component_id, get_component_ops<T>());
+		auto old_row = record.rowIndex;
+		auto new_row = new_archetype.pushUninitializedRow(e);
 
-		for (ComponentId id : from.type_ids()) {
-			int src_idx = from.columnIndexOf(id);
-			int dst_idx = to.columnIndexOf(id);
-			from.column(src_idx).getOps()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+		for (ComponentId id : current_archetype.type_ids()) {
+			int src_idx = current_archetype.columnIndexOf(id);
+			int dst_idx = new_archetype.columnIndexOf(id);
+			current_archetype.column(src_idx).getOps()->moveConstruct(new_archetype.column(dst_idx).at(new_row), current_archetype.column(src_idx).at(old_row));
 		}
 
-		int new_col_idx = to.columnIndexOf(added_id);
-		void* slot = to.column(new_col_idx).at(new_row);
+		int new_col_idx = new_archetype.columnIndexOf(added_component_id);
+		void* slot = new_archetype.column(new_col_idx).at(new_row);
 		T* value = new (slot) T(std::forward<Args>(args)...);
 
-		Entity moved = from.finishRemovingRow(old_row);
+		Entity moved = current_archetype.finishRemovingRow(old_row);
 		if (moved != NullEntity) 
 			entityTable.updateRow(moved, old_row);
 
-		entityTable.setLocation(e, &to, new_row);
+		entityTable.setLocation(e, &new_archetype, new_row);
 
 		return *value;
 	}
 
+	// remove a component of type T from an entity
 	template <typename T>
 	void remove(Entity e) {
 		assert(isAlive(e));
 		
 		EntityData& record = entityTable.record(e);
-		Archetype& from = *record.archetype;
+		Archetype& current_archetype = *record.archetype;
 		ComponentId removed_id = ComponentType::get<T>();
 		
-		assert(from.contains(removed_id) && "component not present on entity");
+		assert(current_archetype.contains(removed_id) && "component not present on entity");
 
-		Archetype& to = archetypeRegistry.removeTarget(from, removed_id);
-		std::size_t old_row = record.rowIndex;
-		std::size_t new_row = to.pushUninitializedRow(e);
+		Archetype& new_archetype = archetypeRegistry.removeTarget(current_archetype, removed_id);
+		auto old_row = record.rowIndex;
+		auto new_row = new_archetype.pushUninitializedRow(e);
 
-		for (ComponentId id : to.type_ids()) {
-			int src_idx = from.columnIndexOf(id);
-			int dst_idx = to.columnIndexOf(id);
-			from.column(src_idx).getOps()->moveConstruct(to.column(dst_idx).at(new_row), from.column(src_idx).at(old_row));
+		for (ComponentId id : new_archetype.type_ids()) {
+			int src_idx = current_archetype.columnIndexOf(id);
+			int dst_idx = new_archetype.columnIndexOf(id);
+			current_archetype.column(src_idx).getOps()->moveConstruct(new_archetype.column(dst_idx).at(new_row), current_archetype.column(src_idx).at(old_row));
 		}
 
-		from.column(from.columnIndexOf(removed_id)).destroyAt(old_row);
-		Entity moved = from.finishRemovingRow(old_row);
+		current_archetype.column(current_archetype.columnIndexOf(removed_id)).destroyAt(old_row);
+		Entity moved = current_archetype.finishRemovingRow(old_row);
 
 		if (moved != NullEntity) 
 			entityTable.updateRow(moved, old_row);
 
-		entityTable.setLocation(e, &to, new_row);
+		entityTable.setLocation(e, &new_archetype, new_row);
 	}
 
+	template <typename T>
+	T& get(Entity e) {
+		assert(isAlive(e));
+
+		EntityData& rec = entityTable.record(e);
+		int idx = rec.archetype->columnIndexOf(ComponentType::get<T>());
+		
+		assert(idx >= 0 && "entity does not have this component");
+
+		return *static_cast<T*>(rec.archetype->column(idx).at(rec.rowIndex));
+	}
+
+	template <typename T>
+	const T& get(Entity e) const {
+		return const_cast<EntityManager*>(this)->template get<T>(e);
+	}
+
+	// return true if entity has a given component
 	template <typename T>
 	bool has(Entity e) {
 		assert(isAlive(e));
@@ -262,6 +283,7 @@ public:
 		return rec.archetype->contains(ComponentType::get<T>());
 	}
 
+	// get an iterable view of entities having the requested set of components
 	template <typename... Components>
 	EntityView<Components...> view() {
 		return EntityView<Components...>(archetypeRegistry);
