@@ -40,10 +40,13 @@ private:
 	// destroy each object before releasing the memory block
 	void release() {
 		if (data) {
-			for (auto i = 0; i < count; i++) {
+			for (std::size_t i = 0; i < count; i++) {
 				ops->destroy(at(i));
-				releaseBuffer();
 			}
+			releaseBuffer();
+			data = nullptr;
+			count = 0;
+			capacity = 0;
 		}
 	}
 

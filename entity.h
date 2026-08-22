@@ -12,8 +12,8 @@ constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing 
 using EntityIndex = std::uint32_t;
 using EntityGeneration = std::uint32_t;
 
-EntityIndex entityIndex(Entity entity)				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
-EntityGeneration entityGeneration(Entity entity)	{ return static_cast<EntityGeneration>(entity >> 32); }
+inline EntityIndex entityIndex(Entity entity)				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
+inline EntityGeneration entityGeneration(Entity entity)	{ return static_cast<EntityGeneration>(entity >> 32); }
 
 //-----------------------------------------------------------------------------------------
 // A record of entity data, including its generation, archetype, row index and alive status
@@ -129,8 +129,10 @@ public:
 
 private:
 	template <typename Func, std::size_t N, std::size_t... I>
-	static void invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
-		std::size_t row, std::index_sequence<I...>) {
+	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::size_t row, std::index_sequence<I...>)
+		-> decltype(func(*static_cast<Components*>(nullptr)...), void())
+	{
 		func(*static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
 	}
 
