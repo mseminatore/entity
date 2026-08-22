@@ -35,7 +35,9 @@ void collisionSystem(EntityManager& entityManager)
 	// destroy all entities that were marked for destruction
 	for (Entity e : toDestroy) {
 		if (entityManager.isAlive(e)) {
-			printf("Destroying entity '%s' (%llu) due to collision.\n", entityManager.get<Name>(e).value.c_str(), e);
+			if (auto name = entityManager.get<Name>(e)) {
+				printf("Destroying entity '%s' (%llu) due to collision.\n", name->get().value.c_str(), e);
+			}
 			entityManager.destroy(e);
 		}
 	}

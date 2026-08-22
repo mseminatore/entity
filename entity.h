@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <vector>
 #include <array>
+#include <optional>
+#include <functional>
 
 using Entity = std::uint64_t;
 constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
@@ -257,21 +259,28 @@ public:
 		entityTable.setLocation(e, &new_archetype, new_row);
 	}
 
+	// returns the component if the entity has it, or std::nullopt otherwise
 	template <typename T>
-	T& get(Entity e) {
+	std::optional<std::reference_wrapper<T>> get(Entity e) {
 		assert(isAlive(e));
 
 		EntityData& rec = entityTable.record(e);
 		int idx = rec.archetype->columnIndexOf(ComponentType::get<T>());
-		
-		assert(idx >= 0 && "entity does not have this component");
 
-		return *static_cast<T*>(rec.archetype->column(idx).at(rec.rowIndex));
+		if (idx < 0)
+			return std::nullopt;
+
+		return std::ref(*static_cast<T*>(rec.archetype->column(idx).at(rec.rowIndex)));
 	}
 
 	template <typename T>
-	const T& get(Entity e) const {
-		return const_cast<EntityManager*>(this)->template get<T>(e);
+	std::optional<std::reference_wrapper<const T>> get(Entity e) const {
+		auto result = const_cast<EntityManager*>(this)->template get<T>(e);
+
+		if (!result)
+			return std::nullopt;
+
+		return std::cref(result->get());
 	}
 
 	// return true if entity has a given component

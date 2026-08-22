@@ -108,6 +108,56 @@ static bool test_remove_preserves_other_components() {
 }
 
 //------------------------------------------------------
+// Component accessors: get() / has()
+//------------------------------------------------------
+static bool test_has_returns_false_for_missing_component() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, Position{ 1.0f, 1.0f });
+
+	return !em.has<Velocity>(e);
+}
+
+static bool test_get_returns_value_for_existing_component() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, Position{ 4.0f, 5.0f });
+
+	auto pos = em.get<Position>(e);
+	if (!pos || pos->get().x != 4.0f || pos->get().y != 5.0f) return false;
+
+	// get() returns a reference into live storage; a mutation through it
+	// must be visible to a subsequent get() call
+	pos->get().x = 100.0f;
+	auto pos2 = em.get<Position>(e);
+
+	return pos2.has_value() && pos2->get().x == 100.0f;
+}
+
+static bool test_get_returns_nullopt_for_missing_component() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, Position{ 1.0f, 1.0f });
+
+	auto vel = em.get<Velocity>(e);
+
+	return !vel.has_value();
+}
+
+static bool test_get_const_overload_returns_value_and_nullopt() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, Position{ 2.0f, 3.0f });
+
+	const EntityManager& cem = em;
+	auto pos = cem.get<Position>(e);
+	auto vel = cem.get<Velocity>(e);
+
+	return pos.has_value() && pos->get().x == 2.0f && pos->get().y == 3.0f
+		&& !vel.has_value();
+}
+
+//------------------------------------------------------
 // Non-trivial component types (std::string member),
 // which exercises the move-construct/destroy ComponentOps
 // during archetype migrations rather than trivial memcpy.
@@ -468,6 +518,12 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("remove() clears has()", test_remove_clears_has());
 	TESTEX("archetype migration preserves earlier component data", test_archetype_migration_preserves_earlier_component());
 	TESTEX("removing a component preserves the other components", test_remove_preserves_other_components());
+
+	SUITE("Component accessors: get() / has()");
+	TESTEX("has() returns false for a component that was never added", test_has_returns_false_for_missing_component());
+	TESTEX("get() returns the live value for an existing component", test_get_returns_value_for_existing_component());
+	TESTEX("get() returns std::nullopt for a missing component", test_get_returns_nullopt_for_missing_component());
+	TESTEX("const get() returns a value or std::nullopt correctly", test_get_const_overload_returns_value_and_nullopt());
 
 	SUITE("Non-trivial component types");
 	TESTEX("a std::string component survives archetype migration", test_non_trivial_component_round_trips());
