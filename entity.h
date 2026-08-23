@@ -36,6 +36,7 @@ class EntityTable
 private:
 	std::vector<EntityData> entityDataTable;	// table of entity data, indexed by entity index
 	std::vector<EntityIndex> freeEntityList;	// list of free entity indices for reuse
+	std::size_t liveCount = 0;					// number of currently alive entities
 
 public:
 	// create an entity with the given archetype and add it to the table
@@ -55,9 +56,13 @@ public:
 		Entity entity = (static_cast<Entity>(generation) << 32) | index;
 
 		entityDataTable[index] = { generation, archetype, row, true };
+		++liveCount;
 
 		return entity;
 	}
+
+	// number of currently alive entities
+	std::size_t size() const noexcept { return liveCount; }
 
 	bool isAlive(Entity entity) {
 		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
@@ -94,6 +99,7 @@ public:
 		data.isAlive = false;
 		data.generation++;
 		freeEntityList.push_back(entityIndex(entity));
+		--liveCount;
 	}
 };
 
@@ -116,7 +122,7 @@ public:
 			std::array<int, n> column_index{};
 			bool matches = true;
 
-			for (auto i = 0; i < n; ++i) {
+			for (std::size_t i = 0; i < n; ++i) {
 				int idx = archetype.columnIndexOf(wanted[i]);
 				
 				if (idx < 0) {
@@ -131,7 +137,7 @@ public:
 				continue;
 
 			auto count = archetype.size();
-			for (auto row = 0; row < count; row++) {
+			for (std::size_t row = 0; row < count; row++) {
 				invoke(func, archetype, column_index, row, std::index_sequence_for<Components...>{});
 			}
 		}
@@ -194,6 +200,9 @@ public:
 	}
 
 	bool isAlive(Entity entity) { return entityTable.isAlive(entity); }
+
+	// number of currently alive entities
+	std::size_t size() const noexcept { return entityTable.size(); }
 
 	// add a component of type T to an entity, moving it to a new archetype if necessary
 	template <typename T, typename... Args>

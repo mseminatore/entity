@@ -108,6 +108,31 @@ static bool test_remove_preserves_other_components() {
 }
 
 //------------------------------------------------------
+// add() forwarding construction: main.cpp calls add<T>()
+// by forwarding raw constructor arguments (e.g. a const
+// char* into a C++20 parenthesized-aggregate-init), not by
+// pre-building a T and moving/copying it in like most tests
+// above do. Exercise that real call shape directly.
+//------------------------------------------------------
+static bool test_add_forwards_single_constructor_arg() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Name>(e, "Rock"); // matches main.cpp's add<Name>(rock, "Rock")
+
+	auto name = em.get<Name>(e);
+	return name.has_value() && name->get().value == "Rock";
+}
+
+static bool test_add_forwards_multiple_constructor_args() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, 5.0f, 6.0f); // proves Args&&... forwards more than one argument
+
+	auto pos = em.get<Position>(e);
+	return pos.has_value() && pos->get().x == 5.0f && pos->get().y == 6.0f;
+}
+
+//------------------------------------------------------
 // Component accessors: get() / has()
 //------------------------------------------------------
 static bool test_has_returns_false_for_missing_component() {
@@ -317,6 +342,30 @@ static bool test_archetype_edge_caching_is_inverse() {
 	return cached && roundTrip;
 }
 
+// Archetype::containsAll(): public but unused anywhere else in the
+// codebase, so it has no incidental coverage from any other test
+static bool test_archetype_contains_all() {
+	ArchetypeRegistry registry;
+	Archetype& empty = registry.empty();
+
+	ComponentId posId = ComponentType::get<Position>();
+	ComponentId velId = ComponentType::get<Velocity>();
+	ComponentId radiusId = ComponentType::get<Radius>();
+
+	Archetype& posVel = registry.addTarget(
+		registry.addTarget(empty, posId, get_component_ops<Position>()),
+		velId, get_component_ops<Velocity>());
+
+	bool trueForEmptySet = posVel.containsAll({});
+	bool trueForSubset = posVel.containsAll({ posId });
+	bool trueForExactSet = posVel.containsAll({ posId, velId });
+	bool falseWhenOneIdIsMissing = !posVel.containsAll({ posId, velId, radiusId });
+	bool falseForUnrelatedId = !posVel.containsAll({ radiusId });
+
+	return trueForEmptySet && trueForSubset && trueForExactSet
+		&& falseWhenOneIdIsMissing && falseForUnrelatedId;
+}
+
 //------------------------------------------------------
 // Column growth
 //------------------------------------------------------
@@ -441,6 +490,122 @@ static bool test_zero_arity_view_visits_every_entity() {
 	return visited == 2 && sawWithComponents && sawEmpty;
 }
 
+// a fully empty EntityManager (no entity ever created) must not crash,
+// and both a typed and a zero-arity view must visit nothing
+static bool test_empty_entity_manager_views_visit_nothing() {
+	EntityManager em;
+
+	int visitedTyped = 0;
+	em.view<Position>().for_each([&](Position&) { ++visitedTyped; });
+
+	int visitedAll = 0;
+	em.view<>().for_each([&](Entity) { ++visitedAll; });
+
+	return visitedTyped == 0 && visitedAll == 0 && em.size() == 0;
+}
+
+//------------------------------------------------------
+// Multi-archetype matrix: exercise several simultaneous
+// archetypes at once, stressing columnIndexOf/matching
+// logic beyond the 1-2 archetypes other tests juggle
+//------------------------------------------------------
+template <typename... Components>
+static std::vector<Entity> collect_matching(EntityManager& em) {
+	std::vector<Entity> result;
+	em.view<Components...>().for_each([&](Entity e, Components&...) {
+		result.push_back(e);
+	});
+	std::sort(result.begin(), result.end());
+	return result;
+}
+
+static std::vector<Entity> sorted(std::vector<Entity> v) {
+	std::sort(v.begin(), v.end());
+	return v;
+}
+
+static bool test_multi_archetype_matrix_queries_return_expected_sets() {
+	EntityManager em;
+
+	Entity posOnly = em.create();
+	em.add<Position>(posOnly, Position{ 0.0f, 0.0f });
+
+	Entity posVel = em.create();
+	em.add<Position>(posVel, Position{ 1.0f, 1.0f });
+	em.add<Velocity>(posVel, Velocity{ 1.0f, 1.0f });
+
+	Entity posRadius = em.create();
+	em.add<Position>(posRadius, Position{ 2.0f, 2.0f });
+	em.add<Radius>(posRadius, Radius{ 2.0f });
+
+	Entity posVelRadius = em.create();
+	em.add<Position>(posVelRadius, Position{ 3.0f, 3.0f });
+	em.add<Velocity>(posVelRadius, Velocity{ 3.0f, 3.0f });
+	em.add<Radius>(posVelRadius, Radius{ 3.0f });
+
+	Entity healthOnly = em.create();
+	em.add<Health>(healthOnly, Health{ 100.0f });
+
+	Entity healthBounds = em.create();
+	em.add<Health>(healthBounds, Health{ 50.0f });
+	em.add<Bounds>(healthBounds, Bounds{ 10.0f, 20.0f });
+
+	Entity posName = em.create();
+	em.add<Position>(posName, Position{ 4.0f, 4.0f });
+	em.add<Name>(posName, "Tagged");
+
+	Entity velHealth = em.create();
+	em.add<Velocity>(velHealth, Velocity{ 5.0f, 5.0f });
+	em.add<Health>(velHealth, Health{ 25.0f });
+
+	bool ok = true;
+
+	ok = ok && collect_matching<Position>(em)
+		== sorted({ posOnly, posVel, posRadius, posVelRadius, posName });
+
+	ok = ok && collect_matching<Position, Velocity>(em)
+		== sorted({ posVel, posVelRadius });
+
+	ok = ok && collect_matching<Health>(em)
+		== sorted({ healthOnly, healthBounds, velHealth });
+
+	ok = ok && collect_matching<Velocity, Health>(em)
+		== sorted({ velHealth });
+
+	ok = ok && collect_matching<Bounds>(em)
+		== sorted({ healthBounds });
+
+	ok = ok && collect_matching<Name>(em)
+		== sorted({ posName });
+
+	ok = ok && collect_matching<Position, Velocity, Radius>(em)
+		== sorted({ posVelRadius });
+
+	return ok;
+}
+
+//------------------------------------------------------
+// EntityManager::size()
+//------------------------------------------------------
+static bool test_size_tracks_live_entities_through_recycling() {
+	EntityManager em;
+	if (em.size() != 0) return false;
+
+	Entity a = em.create();
+	Entity b = em.create();
+	if (em.size() != 2) return false;
+
+	em.destroy(a);
+	if (em.size() != 1) return false;
+
+	Entity c = em.create(); // likely recycles a's index
+	if (em.size() != 2) return false;
+
+	em.destroy(b);
+	em.destroy(c);
+	return em.size() == 0;
+}
+
 //------------------------------------------------------
 // Integration-style scenarios (mirrors main.cpp's actual usage)
 //------------------------------------------------------
@@ -519,6 +684,10 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("archetype migration preserves earlier component data", test_archetype_migration_preserves_earlier_component());
 	TESTEX("removing a component preserves the other components", test_remove_preserves_other_components());
 
+	SUITE("add() forwarding construction");
+	TESTEX("add() forwards a single constructor argument", test_add_forwards_single_constructor_arg());
+	TESTEX("add() forwards multiple constructor arguments", test_add_forwards_multiple_constructor_args());
+
 	SUITE("Component accessors: get() / has()");
 	TESTEX("has() returns false for a component that was never added", test_has_returns_false_for_missing_component());
 	TESTEX("get() returns the live value for an existing component", test_get_returns_value_for_existing_component());
@@ -538,6 +707,7 @@ void test_main(int argc, char* argv[]) {
 	SUITE("Archetype identity & signature caching");
 	TESTEX("adding components in a different order interns to the same archetype", test_archetype_order_independent());
 	TESTEX("addTarget/removeTarget caching is a true inverse", test_archetype_edge_caching_is_inverse());
+	TESTEX("containsAll() correctly checks subset/superset/unrelated id sets", test_archetype_contains_all());
 
 	SUITE("Column growth");
 	TESTEX("many entities survive multiple column growth cycles", test_many_entities_survive_column_growth());
@@ -550,6 +720,13 @@ void test_main(int argc, char* argv[]) {
 	SUITE("view edge cases");
 	TESTEX("view for an unused component visits nothing", test_view_for_unused_component_visits_nothing());
 	TESTEX("zero-arity view visits every entity", test_zero_arity_view_visits_every_entity());
+	TESTEX("a fully empty EntityManager's views visit nothing", test_empty_entity_manager_views_visit_nothing());
+
+	SUITE("Multi-archetype matrix");
+	TESTEX("queries return exactly the expected entity set across several archetypes", test_multi_archetype_matrix_queries_return_expected_sets());
+
+	SUITE("EntityManager::size()");
+	TESTEX("size() tracks live entities through create/destroy/recycling", test_size_tracks_live_entities_through_recycling());
 
 	SUITE("Integration-style scenarios");
 	TESTEX("movement system only moves matching entities", test_movement_system_only_moves_matching_entities());

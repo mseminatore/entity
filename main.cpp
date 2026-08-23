@@ -17,7 +17,7 @@ void collisionSystem(EntityManager& entityManager)
 
 	// N^2 check for collisions between entities with position components
 	entityManager.view<Position, Radius, Name>().for_each([&entityManager, &toDestroy](Entity e1, Position& p1, Radius& r1, Name& name1) {
-		entityManager.view<Position, Velocity, Radius, Name>().for_each([&](Entity e2, Position& p2, Velocity& v, Radius& r2, Name& name2) {
+		entityManager.view<Position, Velocity, Radius, Name>().for_each([&](Entity e2, Position& p2, Velocity&, Radius& r2, Name& name2) {
 			if (e1 == e2)
 				return; // skip self checks
 
@@ -80,7 +80,7 @@ constexpr int QUIT_KEY = 'q';
 //--------------------------------------------------------------------------------------------
 // handle user input
 //--------------------------------------------------------------------------------------------
-void handleInput(EntityManager& entityManager)
+void handleInput(EntityManager&)
 {
 	// Handle user input and update entities accordingly
 	int c = getchar(); // Wait for user input to proceed to the next frame
@@ -123,7 +123,7 @@ void initializeGame(EntityManager& entityManager)
 //--------------------------------------------------------------------------------------------
 // main entry point for the application
 //--------------------------------------------------------------------------------------------
-int main(int argc, char *argv[])
+int main(int, char*[])
 {
 	EntityManager entityManager;
 	//EntityList entities;

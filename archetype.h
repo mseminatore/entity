@@ -22,7 +22,7 @@ private:
 		std::size_t new_capacity = capacity == 0 ? MinCapacity : capacity * GrowthFactor;
 		auto* new_data = static_cast<std::byte*>(::operator new(new_capacity * ops->size, std::align_val_t{ ops->alignment }));
 
-		for (auto i = 0; i < count; i++) {
+		for (std::size_t i = 0; i < count; i++) {
 			ops->moveConstruct(new_data + i * ops->size, data + i * ops->size);
 		}
 
@@ -114,9 +114,9 @@ public:
 	const std::vector<ComponentId>& type_ids() const noexcept { return componentTypes; }
 
 	int columnIndexOf(ComponentId id) const {
-		for (auto i = 0; i < componentTypes.size(); ++i) {
+		for (std::size_t i = 0; i < componentTypes.size(); ++i) {
 			if (componentTypes[i] == id) {
-				return i;
+				return static_cast<int>(i);
 			}
 		}
 
