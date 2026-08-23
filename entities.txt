@@ -1,0 +1,13 @@
+# Entity definitions loaded by main.cpp:initializeGame().
+# See loadEntitiesFromFile() in main.cpp for the file format.
+
+entity
+Position 10.0 5.0
+Radius 5.0
+Name Rock
+
+entity
+Position 0.0 2.5
+Velocity 1.0 0.0
+Radius 1.0
+Name Missile

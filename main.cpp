@@ -2,6 +2,9 @@
 #include <cinttypes>
 #include "entity.h"
 #include "components.h"
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using EntityList = std::vector<Entity>;
@@ -104,34 +107,102 @@ void gameLoop(EntityManager& entityManager)
 }
 
 //--------------------------------------------------------------------------------------------
-// setup of the game world and entities. could be loaded from a file or procedurally generated
+// load entity definitions from a simple text file and construct them.
+//
+// File format: blank lines and lines starting with '#' are ignored. An
+// "entity" line starts a new entity; each following line up to the next
+// "entity" (or end of file) is "<ComponentName> <field values...>", e.g.:
+//
+//   entity
+//   Position 10.0 5.0
+//   Radius 5.0
+//   Name Rock
+//
+// Only the component types below are recognized; add a case here whenever
+// a new loadable component type is introduced.
 //--------------------------------------------------------------------------------------------
-void initializeGame(EntityManager& entityManager)
+void loadEntitiesFromFile(EntityManager& entityManager, const std::string& path)
 {
-	// Initialize game entities and components
-	Entity rock = entityManager.create();
-	entityManager.add<Position>(rock, Position{ 10.0f, 5.0f });
-	entityManager.add<Radius>(rock, Radius{ 5.0f });
-	entityManager.add<Name>(rock, "Rock" );
+	std::ifstream file(path);
+	if (!file) {
+		fprintf(stderr, "Could not open entity file '%s'\n", path.c_str());
+		return;
+	}
 
-	Entity missile = entityManager.create();
-	entityManager.add<Position>(missile, Position{ 0.0f, 2.5f });
-	entityManager.add<Velocity>(missile, Velocity{ 1.0f, 0.0f });
-	entityManager.add<Radius>(missile, Radius{ 1.0f });
-	entityManager.add<Name>(missile, "Missile" );
+	Entity current = NullEntity;
+	std::string line;
+
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#')
+			continue;
+
+		std::istringstream iss(line);
+		std::string keyword;
+		iss >> keyword;
+
+		if (keyword.empty())
+			continue;
+
+		if (keyword == "entity") {
+			current = entityManager.create();
+			continue;
+		}
+
+		if (current == NullEntity) {
+			fprintf(stderr, "Component line before any 'entity' declaration: %s\n", line.c_str());
+			continue;
+		}
+
+		if (keyword == "Position") {
+			float x, y;
+			iss >> x >> y;
+			entityManager.add<Position>(current, Position{ x, y });
+		} else if (keyword == "Velocity") {
+			float vx, vy;
+			iss >> vx >> vy;
+			entityManager.add<Velocity>(current, Velocity{ vx, vy });
+		} else if (keyword == "Radius") {
+			float r;
+			iss >> r;
+			entityManager.add<Radius>(current, Radius{ r });
+		} else if (keyword == "Health") {
+			float hp;
+			iss >> hp;
+			entityManager.add<Health>(current, Health{ hp });
+		} else if (keyword == "Bounds") {
+			float width, height;
+			iss >> width >> height;
+			entityManager.add<Bounds>(current, Bounds{ width, height });
+		} else if (keyword == "Name") {
+			std::string name;
+			std::getline(iss >> std::ws, name); // rest of the line, allowing spaces
+			entityManager.add<Name>(current, name);
+		} else {
+			fprintf(stderr, "Unknown component '%s'\n", keyword.c_str());
+		}
+	}
+}
+
+//--------------------------------------------------------------------------------------------
+// setup of the game world and entities, loaded from a data file
+//--------------------------------------------------------------------------------------------
+void initializeGame(EntityManager& entityManager, const std::string& entityFile)
+{
+	loadEntitiesFromFile(entityManager, entityFile);
 }
 
 //--------------------------------------------------------------------------------------------
 // main entry point for the application
 //--------------------------------------------------------------------------------------------
-int main(int, char*[])
+int main(int argc, char* argv[])
 {
 	EntityManager entityManager;
 	//EntityList entities;
 
-	initializeGame(entityManager);
+	const char* entityFile = argc > 1 ? argv[1] : "entities.txt";
+	initializeGame(entityManager, entityFile);
 
 	gameLoop(entityManager);
 
-    return 0; 
+    return 0;
 }
