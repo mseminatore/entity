@@ -2,7 +2,7 @@
 
 [![CMake](https://github.com/mseminatore/entity/actions/workflows/cmake.yml/badge.svg)](https://github.com/mseminatore/entity/actions/workflows/cmake.yml)
 
-A small, header-only, archetype-based Entity Component System (ECS) for C++20.
+A small, header-only, archetype-based Entity Component System (ECS) for C++23.
 
 Entities are cheap, generation-checked handles. Components are plain structs with no base
 class or registration boilerplate. Entities are grouped into archetypes by their exact set
