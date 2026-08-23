@@ -21,6 +21,16 @@ jobs:
       with:
         submodules: recursive
 
+    # the library uses C++23 deducing-this, which GCC only supports from
+    # GCC 14 onward; ubuntu-latest's default g++ is currently GCC 13
+    - name: Install GCC 14 (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++-14
+        echo "CC=gcc-14" >> "$GITHUB_ENV"
+        echo "CXX=g++-14" >> "$GITHUB_ENV"
+
     - name: Configure CMake
       run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
 
