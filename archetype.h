@@ -32,13 +32,14 @@ private:
 	}
 
 	// release the memory block
-	void releaseBuffer() {
+	void releaseBuffer() noexcept {
 		if (data)
 			::operator delete(data, std::align_val_t{ ops->alignment });
 	}
 
-	// destroy each object before releasing the memory block
-	void release() {
+	// destroy each object before releasing the memory block. Assumes component
+	// destructors do not throw, matching the standard convention for destructors.
+	void release() noexcept {
 		if (data) {
 			for (std::size_t i = 0; i < count; i++) {
 				ops->destroy(at(i));
@@ -51,14 +52,14 @@ private:
 	}
 
 public:
-	Column(const ComponentOps* ops) : ops(ops) {}
+	Column(const ComponentOps* ops) noexcept : ops(ops) {}
 
 	virtual ~Column() { release(); }
 
-	std::size_t size() const { return count; }
+	std::size_t size() const noexcept { return count; }
 	const ComponentOps* getOps() const noexcept { return ops; }
 
-	void* at(std::size_t row) { return data + row * ops->size; }
+	void* at(std::size_t row) noexcept { return data + row * ops->size; }
 
 	void* pushUninitialized() {
 		// grow if we are full
@@ -68,7 +69,8 @@ public:
 		return data + (count++) * ops->size;
 	}
 
-	void destroyAt(std::size_t row) {
+	// assumes the component's destructor does not throw
+	void destroyAt(std::size_t row) noexcept {
 		ops->destroy(at(row));
 	}
 
@@ -110,10 +112,10 @@ public:
 		}
 	}
 
-	std::size_t size() const { return entities.size(); }
+	std::size_t size() const noexcept { return entities.size(); }
 	const std::vector<ComponentId>& type_ids() const noexcept { return componentTypes; }
 
-	int columnIndexOf(ComponentId id) const {
+	int columnIndexOf(ComponentId id) const noexcept {
 		for (std::size_t i = 0; i < componentTypes.size(); ++i) {
 			if (componentTypes[i] == id) {
 				return static_cast<int>(i);
@@ -123,9 +125,9 @@ public:
 		return -1; // not found
 	}
 
-	bool contains(ComponentId id) const { return std::find(componentTypes.begin(), componentTypes.end(), id) != componentTypes.end(); }
+	bool contains(ComponentId id) const noexcept { return std::find(componentTypes.begin(), componentTypes.end(), id) != componentTypes.end(); }
 
-	bool containsAll(const std::vector<ComponentId>& ids) const {
+	bool containsAll(const std::vector<ComponentId>& ids) const noexcept {
 		for (ComponentId id : ids) {
 			if (!contains(id)) {
 				return false;
@@ -134,9 +136,9 @@ public:
 		return true;
 	}
 
-	Column& column(std::size_t index) { return columns[index]; }
+	Column& column(std::size_t index) noexcept { return columns[index]; }
 
-	std::size_t columnCount() const { return columns.size(); }
+	std::size_t columnCount() const noexcept { return columns.size(); }
 
 	std::size_t pushUninitializedRow(Entity entity) {
 
@@ -174,7 +176,7 @@ public:
 		return moved;
 	}
 
-	Entity entityAt(std::size_t row) const { return entities[row]; }
+	Entity entityAt(std::size_t row) const noexcept { return entities[row]; }
 };
 
 using Signature = std::vector<ComponentId>;
@@ -223,7 +225,7 @@ public:
 		emptyArchetype = &create({}, {});
 	}
 
-	Archetype& empty() { return *emptyArchetype; }
+	Archetype& empty() noexcept { return *emptyArchetype; }
 
 	// Returns the archetype reached from `from` by adding component
 	// `added_id` (whose ops are `added_ops`), creating it if necessary.

@@ -15,8 +15,8 @@ constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing 
 using EntityIndex		= std::uint32_t;
 using EntityGeneration	= std::uint32_t;
 
-inline EntityIndex entityIndex(Entity entity)				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
-inline EntityGeneration entityGeneration(Entity entity)		{ return static_cast<EntityGeneration>(entity >> 32); }
+inline EntityIndex entityIndex(Entity entity) noexcept				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
+inline EntityGeneration entityGeneration(Entity entity) noexcept		{ return static_cast<EntityGeneration>(entity >> 32); }
 
 //-----------------------------------------------------------------------------------------
 // A record of entity data, including its generation, archetype, row index and alive status
@@ -65,7 +65,7 @@ public:
 	// number of currently alive entities
 	std::size_t size() const noexcept { return liveCount; }
 
-	bool isAlive(Entity entity) const {
+	bool isAlive(Entity entity) const noexcept {
 		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
 
 		// check bounds
@@ -78,21 +78,21 @@ public:
 
 	// const-qualified for a const EntityTable, non-const otherwise (deduced from self)
 	template <typename Self>
-	auto& record(this Self& self, Entity entity) {
+	auto& record(this Self& self, Entity entity) noexcept {
 		assert(self.isAlive(entity));	// ensure the entity is alive before accessing its record
 
 		EntityIndex index = entityIndex(entity);
 		return self.entityDataTable[index];
 	}
 
-	void setLocation(Entity entity, Archetype* archetype, std::size_t row) {
+	void setLocation(Entity entity, Archetype* archetype, std::size_t row) noexcept {
 		EntityIndex index = entityIndex(entity);
 		entityDataTable[index].archetype = archetype;
 		entityDataTable[index].rowIndex = row;
 	}
 
 	// Update the row index of an entity in the entity data table
-	void updateRow(Entity entity, std::size_t newRow) {
+	void updateRow(Entity entity, std::size_t newRow) noexcept {
 		record(entity).rowIndex = newRow;
 	}
 
@@ -112,7 +112,7 @@ public:
 template <typename... Components>
 class EntityView {
 public:
-	explicit EntityView(ArchetypeRegistry& registry) : registry(&registry) {}
+	explicit EntityView(ArchetypeRegistry& registry) noexcept : registry(&registry) {}
 
 	// Iterate over all entities with the specified component types and invoke the provided function
 	template <typename Func>
@@ -202,7 +202,7 @@ public:
 		entityTable.destroy(entity);
 	}
 
-	bool isAlive(Entity entity) const { return entityTable.isAlive(entity); }
+	bool isAlive(Entity entity) const noexcept { return entityTable.isAlive(entity); }
 
 	// number of currently alive entities
 	std::size_t size() const noexcept { return entityTable.size(); }
@@ -275,7 +275,7 @@ public:
 	// a single deducing-this template covers both the const and non-const case
 	template <typename T, typename Self>
 	std::optional<std::reference_wrapper<std::conditional_t<std::is_const_v<Self>, const T, T>>>
-	get(this Self& self, Entity e) {
+	get(this Self& self, Entity e) noexcept {
 		assert(self.isAlive(e));
 
 		auto& rec = self.entityTable.record(e);
@@ -291,7 +291,7 @@ public:
 
 	// return true if entity has a given component
 	template <typename T>
-	bool has(Entity e) {
+	bool has(Entity e) noexcept {
 		assert(isAlive(e));
 
 		const EntityData& rec = entityTable.record(e);
@@ -300,7 +300,7 @@ public:
 
 	// get an iterable view of entities having the requested set of components
 	template <typename... Components>
-	EntityView<Components...> view() {
+	EntityView<Components...> view() noexcept {
 		return EntityView<Components...>(archetypeRegistry);
 	}
 };
