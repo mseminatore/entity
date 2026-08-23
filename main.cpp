@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <cinttypes>
 #include "entity.h"
 #include "components.h"
 #include <vector>
@@ -36,7 +37,7 @@ void collisionSystem(EntityManager& entityManager)
 	for (Entity e : toDestroy) {
 		if (entityManager.isAlive(e)) {
 			if (auto name = entityManager.get<Name>(e)) {
-				printf("Destroying entity '%s' (%llu) due to collision.\n", name->get().value.c_str(), e);
+				printf("Destroying entity '%s' (%" PRIu64 ") due to collision.\n", name->get().value.c_str(), e);
 			}
 			entityManager.destroy(e);
 		}
