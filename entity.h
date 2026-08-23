@@ -4,6 +4,7 @@
 #include <array>
 #include <optional>
 #include <functional>
+#include <type_traits>
 
 using Entity = std::uint64_t;
 constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
@@ -64,7 +65,7 @@ public:
 	// number of currently alive entities
 	std::size_t size() const noexcept { return liveCount; }
 
-	bool isAlive(Entity entity) {
+	bool isAlive(Entity entity) const {
 		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
 
 		// check bounds
@@ -75,11 +76,13 @@ public:
 		return entityDataTable[index].isAlive && entityGeneration(entity) == entityDataTable[index].generation;
 	}
 
-	EntityData& record(Entity entity) {
-		assert(isAlive(entity));	// ensure the entity is alive before accessing its record
+	// const-qualified for a const EntityTable, non-const otherwise (deduced from self)
+	template <typename Self>
+	auto& record(this Self& self, Entity entity) {
+		assert(self.isAlive(entity));	// ensure the entity is alive before accessing its record
 
 		EntityIndex index = entityIndex(entity);
-		return entityDataTable[index];
+		return self.entityDataTable[index];
 	}
 
 	void setLocation(Entity entity, Archetype* archetype, std::size_t row) {
@@ -199,7 +202,7 @@ public:
 		entityTable.destroy(entity);
 	}
 
-	bool isAlive(Entity entity) { return entityTable.isAlive(entity); }
+	bool isAlive(Entity entity) const { return entityTable.isAlive(entity); }
 
 	// number of currently alive entities
 	std::size_t size() const noexcept { return entityTable.size(); }
@@ -268,28 +271,22 @@ public:
 		entityTable.setLocation(e, &new_archetype, new_row);
 	}
 
-	// returns the component if the entity has it, or std::nullopt otherwise
-	template <typename T>
-	std::optional<std::reference_wrapper<T>> get(Entity e) {
-		assert(isAlive(e));
+	// returns the component if the entity has it, or std::nullopt otherwise;
+	// a single deducing-this template covers both the const and non-const case
+	template <typename T, typename Self>
+	std::optional<std::reference_wrapper<std::conditional_t<std::is_const_v<Self>, const T, T>>>
+	get(this Self& self, Entity e) {
+		assert(self.isAlive(e));
 
-		EntityData& rec = entityTable.record(e);
+		auto& rec = self.entityTable.record(e);
 		int idx = rec.archetype->columnIndexOf(ComponentType::get<T>());
+
+		using ComponentT = std::conditional_t<std::is_const_v<Self>, const T, T>;
 
 		if (idx < 0)
 			return std::nullopt;
 
-		return std::ref(*static_cast<T*>(rec.archetype->column(idx).at(rec.rowIndex)));
-	}
-
-	template <typename T>
-	std::optional<std::reference_wrapper<const T>> get(Entity e) const {
-		auto result = const_cast<EntityManager*>(this)->template get<T>(e);
-
-		if (!result)
-			return std::nullopt;
-
-		return std::cref(result->get());
+		return std::ref(*static_cast<ComponentT*>(rec.archetype->column(idx).at(rec.rowIndex)));
 	}
 
 	// return true if entity has a given component
