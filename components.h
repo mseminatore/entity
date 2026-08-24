@@ -1,3 +1,5 @@
+#pragma once
+
 // Component definitions
 #include <string>
 

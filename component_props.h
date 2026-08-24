@@ -1,3 +1,5 @@
+#pragma once
+
 //--------------------------------------------------------------------------------------------
 // Define the ComponentType and ComponentOps classes, which are used to manage component types
 // in an ECS (Entity-Component-System) architecture.
