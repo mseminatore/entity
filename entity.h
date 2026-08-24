@@ -16,7 +16,8 @@ using EntityIndex		= std::uint32_t;
 using EntityGeneration	= std::uint32_t;
 
 inline EntityIndex entityIndex(Entity entity) noexcept				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
-inline EntityGeneration entityGeneration(Entity entity) noexcept		{ return static_cast<EntityGeneration>(entity >> 32); }
+inline EntityGeneration entityGeneration(Entity entity) noexcept	{ return static_cast<EntityGeneration>(entity >> 32); }
+inline Entity makeEntity(EntityIndex index, EntityGeneration generation) noexcept { return (static_cast<Entity>(generation) << 32) | index; }
 
 //-----------------------------------------------------------------------------------------
 // A record of entity data, including its generation, archetype, row index and alive status
