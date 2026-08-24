@@ -23,7 +23,7 @@ over a query only touches matching archetypes.
 
 ## Requirements
 
-- A C++20 compiler
+- A C++23 compiler
 - CMake 3.10+
 
 ## Getting started
