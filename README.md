@@ -76,7 +76,7 @@ entityManager.remove<Velocity>(e);
 entityManager.destroy(e);
 ```
 
-See `main.cpp` for a fuller example (a small game loop with movement and collision systems).
+See `main.cpp` for a more complete example (a small game loop with movement and collision systems).
 
 ## Testing
 
