@@ -1,12 +1,25 @@
 #pragma once
 
-#include <assert.h>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 #include <array>
 #include <optional>
 #include <functional>
 #include <type_traits>
+
+// Enforces a library precondition unconditionally, independent of NDEBUG. Violating one of
+// these is a contract violation (see CLAUDE.md), not a runtime condition to recover from, so
+// the only thing this needs to do is turn it into a clean, debuggable abort instead of letting
+// a stripped-out assert() let the violation through as undefined behavior in a Release build.
+#define ENTITY_ASSERT(cond) \
+	do { \
+		if (!(cond)) { \
+			std::fprintf(stderr, "entity: precondition violated: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
+			std::abort(); \
+		} \
+	} while (0)
 
 using Entity = std::uint64_t;
 constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
@@ -82,10 +95,25 @@ public:
 	// const-qualified for a const EntityTable, non-const otherwise (deduced from self)
 	template <typename Self>
 	auto& record(this Self& self, Entity entity) noexcept {
-		assert(self.isAlive(entity));	// ensure the entity is alive before accessing its record
+		ENTITY_ASSERT(self.isAlive(entity));	// ensure the entity is alive before accessing its record
 
 		EntityIndex index = entityIndex(entity);
 		return self.entityDataTable[index];
+	}
+
+	// non-asserting counterpart of record(): returns nullptr instead of failing a precondition
+	// when the entity is dead or out of range, doing the liveness check exactly once
+	EntityData* tryRecord(Entity entity) noexcept {
+		EntityIndex index = entityIndex(entity);
+
+		if (index >= entityDataTable.size())
+			return nullptr;
+
+		EntityData& data = entityDataTable[index];
+		if (!data.isAlive || entityGeneration(entity) != data.generation)
+			return nullptr;
+
+		return &data;
 	}
 
 	void setLocation(Entity entity, Archetype* archetype, std::size_t row) noexcept {
@@ -135,15 +163,14 @@ public:
 		constexpr std::size_t n = sizeof...(Components);
 		std::array<ComponentId, n> wanted{ ComponentType::get<Components>()... };
 
-		// snapshot the archetype list so interning a new archetype mid-callback (which can
-		// reallocate registry->all()'s backing vector) can't invalidate this iteration
-		std::vector<Archetype*> archetypes_snapshot;
-		archetypes_snapshot.reserve(registry->all().size());
-		for (const auto& archetype_ptr : registry->all())
-			archetypes_snapshot.push_back(archetype_ptr.get());
+		// capture the archetype count up front so interning a new archetype mid-callback (which
+		// can reallocate registry->all()'s backing vector) can't invalidate this iteration;
+		// registry->all() only ever appends, so indexing by position stays valid across a
+		// reallocation and a newly-appended archetype beyond this count is simply not visited
+		std::size_t archetypeCount = registry->all().size();
 
-		for (Archetype* archetype_ptr : archetypes_snapshot) {
-			Archetype& archetype = *archetype_ptr;
+		for (std::size_t ai = 0; ai < archetypeCount; ++ai) {
+			Archetype& archetype = *registry->all()[ai];
 			std::array<int, n> column_index{};
 			bool matches = true;
 
@@ -175,15 +202,12 @@ public:
 			std::vector<Entity> row_entities = archetype.entityList();
 
 			for (Entity e : row_entities) {
-				if (!entityTable->isAlive(e))
-					continue;	// destroyed by an earlier callback in this loop
+				EntityData* rec = entityTable->tryRecord(e);
 
-				EntityData& rec = entityTable->record(e);
+				if (!rec || rec->archetype != &archetype)
+					continue;	// destroyed, or migrated to a different archetype, by an earlier callback in this loop
 
-				if (rec.archetype != &archetype)
-					continue;	// migrated to a different archetype by an earlier callback in this loop
-
-				invoke(func, archetype, column_index, rec.rowIndex, std::index_sequence_for<Components...>{});
+				invoke(func, archetype, column_index, rec->rowIndex, std::index_sequence_for<Components...>{});
 			}
 		}
 	}
@@ -234,7 +258,7 @@ public:
 
 	// Destroy an entity by removing it from its archetype and marking it as dead in the entity table
 	void destroy(Entity entity) {
-		assert(isAlive(entity));
+		ENTITY_ASSERT(isAlive(entity));
 
 		EntityData& record = entityTable.record(entity);
 		Entity moved = record.archetype->removeRow(record.rowIndex);
@@ -254,13 +278,13 @@ public:
 	// add a component of type T to an entity, moving it to a new archetype if necessary
 	template <typename T, typename... Args>
 	T& add(Entity e, Args&&... args) {
-		assert(isAlive(e));
+		ENTITY_ASSERT(isAlive(e));
 
 		EntityData& record = entityTable.record(e);
 		Archetype& current_archetype = *record.archetype;
 		ComponentId added_component_id = ComponentType::get<T>();
 
-		assert(!current_archetype.contains(added_component_id) && "component already present on entity");
+		ENTITY_ASSERT(!current_archetype.contains(added_component_id) && "component already present on entity");
 
 		Archetype& new_archetype = archetypeRegistry.addTarget(current_archetype, added_component_id, get_component_ops<T>());
 		auto old_row = record.rowIndex;
@@ -288,13 +312,13 @@ public:
 	// remove a component of type T from an entity
 	template <typename T>
 	void remove(Entity e) {
-		assert(isAlive(e));
+		ENTITY_ASSERT(isAlive(e));
 		
 		EntityData& record = entityTable.record(e);
 		Archetype& current_archetype = *record.archetype;
 		ComponentId removed_id = ComponentType::get<T>();
 		
-		assert(current_archetype.contains(removed_id) && "component not present on entity");
+		ENTITY_ASSERT(current_archetype.contains(removed_id) && "component not present on entity");
 
 		Archetype& new_archetype = archetypeRegistry.removeTarget(current_archetype, removed_id);
 		auto old_row = record.rowIndex;
@@ -320,7 +344,7 @@ public:
 	template <typename T, typename Self>
 	std::optional<std::reference_wrapper<std::conditional_t<std::is_const_v<Self>, const T, T>>>
 	get(this Self& self, Entity e) noexcept {
-		assert(self.isAlive(e));
+		ENTITY_ASSERT(self.isAlive(e));
 
 		auto& rec = self.entityTable.record(e);
 		int idx = rec.archetype->columnIndexOf(ComponentType::get<T>());
@@ -336,7 +360,7 @@ public:
 	// return true if entity has a given component
 	template <typename T>
 	bool has(Entity e) noexcept {
-		assert(isAlive(e));
+		ENTITY_ASSERT(isAlive(e));
 
 		const EntityData& rec = entityTable.record(e);
 		return rec.archetype->contains(ComponentType::get<T>());

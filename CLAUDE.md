@@ -28,7 +28,7 @@ Run a test binary directly for colored per-case output (not just pass/fail):
 
 `testy` (the test framework) is a git submodule — if missing after a fresh clone: `git submodule update --init --recursive`.
 
-No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized with `assert()` active by default — this matters because several library preconditions are enforced only via `assert` (see below).
+No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized by default. Library preconditions (see below) are enforced via the `ENTITY_ASSERT` macro (`entity.h`), not bare `assert()` — it checks unconditionally regardless of `NDEBUG`/build type, specifically so a Release build (CI builds both Debug and Release) doesn't silently strip the checks and turn a precondition violation into undefined behavior.
 
 `entity`, `entity_tests`, and `entity_stress_tests` (but not the `testy` submodule) build with `-Wall -Wextra -Werror` (`/W4 /WX` on MSVC) — any new warning fails the build. CI (`.github/workflows/cmake.yml`) builds Debug and Release on both Ubuntu and macOS.
 
@@ -44,7 +44,7 @@ No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized with `assert()` active b
 
 **`add<T>`/`remove<T>` = full archetype migration**: move-construct every existing component from the old archetype's row into the new archetype's row, placement-new the added component (or skip it for a removal), swap-remove the now-vacated row (`Archetype::finishRemovingRow`), and patch `EntityTable`'s row index for whichever entity got swapped into that slot.
 
-**Precondition contracts, not graceful failures.** `add<T>` asserts the component is *not* already present; `remove<T>` asserts it *is* present; both assert the entity is alive. `get<T>` / `has<T>` are the graceful counterparts: `get<T>` returns `std::optional<std::reference_wrapper<T>>` (empty if absent) instead of asserting on a missing component, and `has<T>` never asserts on absence. Don't add error handling around the assert-guarded cases — they're deliberate contract violations, and there's no death-test harness in this repo for exercising them.
+**Precondition contracts, not graceful failures.** `add<T>` asserts (via `ENTITY_ASSERT`) the component is *not* already present; `remove<T>` asserts it *is* present; both assert the entity is alive. `get<T>` / `has<T>` are the graceful counterparts: `get<T>` returns `std::optional<std::reference_wrapper<T>>` (empty if absent) instead of asserting on a missing component, and `has<T>` never asserts on absence. Don't add error handling around the assert-guarded cases — they're deliberate contract violations, and there's no death-test harness in this repo for exercising them. `ENTITY_ASSERT` is intentionally always-on rather than tied to `NDEBUG`: a stripped check wouldn't make the violation "not happen," it would just turn a clean abort into silent memory corruption in a Release build.
 
 **Queries.** `EntityManager::view<Components...>()` matches any archetype that *contains* all requested component ids — extra, unrelated components on a matching entity don't exclude it (it's not an exact-signature match). `EntityView::for_each` accepts either `func(Components&...)` or `func(Entity, Components&...)`, disambiguated via SFINAE on both `invoke` overloads — a lambda with a mismatched arity is a compile error, not a silent misdispatch. `view<>()` with zero template args is a valid (if non-obvious/undocumented) way to visit every live entity across every archetype.
 
