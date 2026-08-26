@@ -56,7 +56,31 @@ private:
 public:
 	Column(const ComponentOps* ops) noexcept : ops(ops) {}
 
-	virtual ~Column() { release(); }
+	Column(const Column&) = delete;
+	Column& operator=(const Column&) = delete;
+
+	Column(Column&& other) noexcept
+		: data(other.data), count(other.count), capacity(other.capacity), ops(other.ops) {
+		other.data = nullptr;
+		other.count = 0;
+		other.capacity = 0;
+	}
+
+	Column& operator=(Column&& other) noexcept {
+		if (this != &other) {
+			release();
+			data = other.data;
+			count = other.count;
+			capacity = other.capacity;
+			ops = other.ops;
+			other.data = nullptr;
+			other.count = 0;
+			other.capacity = 0;
+		}
+		return *this;
+	}
+
+	~Column() { release(); }
 
 	std::size_t size() const noexcept { return count; }
 	const ComponentOps* getOps() const noexcept { return ops; }
@@ -179,6 +203,7 @@ public:
 	}
 
 	Entity entityAt(std::size_t row) const noexcept { return entities[row]; }
+	const std::vector<Entity>& entityList() const noexcept { return entities; }
 };
 
 using Signature = std::vector<ComponentId>;

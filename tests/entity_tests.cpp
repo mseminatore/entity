@@ -45,6 +45,39 @@ static bool test_recycled_index_gets_new_generation() {
 		&& em.isAlive(e2);
 }
 
+// a handle whose index was never allocated must fail isAlive() via the
+// bounds-check branch, not just the generation-mismatch branch
+static bool test_isAlive_false_for_out_of_range_index() {
+	EntityManager em;
+	Entity fabricated = makeEntity(9999, 0);
+	return !em.isAlive(fabricated);
+}
+
+// cycling destroy()/create() on the same index several times must keep
+// advancing the generation, and every previously-issued stale handle for
+// that index (not just the immediately-prior one) must stay invalid
+static bool test_generation_bump_across_multiple_recycle_cycles() {
+	EntityManager em;
+	std::vector<Entity> handles;
+
+	Entity cur = em.create();
+	handles.push_back(cur);
+
+	for (int i = 0; i < 3; ++i) {
+		em.destroy(cur);
+		cur = em.create();
+		handles.push_back(cur);
+	}
+
+	bool ok = em.isAlive(cur);
+	for (std::size_t i = 0; i + 1 < handles.size(); ++i) {
+		ok = ok && !em.isAlive(handles[i]);
+		ok = ok && entityIndex(handles[i]) == entityIndex(cur);
+	}
+
+	return ok;
+}
+
 //------------------------------------------------------
 // Component add / remove / has
 //------------------------------------------------------
@@ -203,6 +236,25 @@ static bool test_non_trivial_component_round_trips() {
 	return ok;
 }
 
+// remove<T>() migrates the entity to a smaller archetype too; the Name
+// column's std::string value must survive that move-construct/destroy path
+// just as it does for add<T>() above
+static bool test_remove_preserves_non_trivial_component() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Name>(e, Name{ "Rock" });
+	em.add<Position>(e, Position{ 0.0f, 0.0f });
+
+	em.remove<Position>(e); // forces a migration back down; Name must be moved, not left dangling
+
+	bool ok = true;
+	em.view<Name>().for_each([&](Name& n) {
+		ok = ok && n.value == "Rock";
+	});
+
+	return ok && !em.has<Position>(e);
+}
+
 //------------------------------------------------------
 // view iteration
 //------------------------------------------------------
@@ -272,6 +324,53 @@ static bool test_view_entity_aware_overload_visits_expected_entities() {
 	return expected == visited;
 }
 
+// destroying a different entity from inside for_each() must not skip,
+// double-visit, or read stale/destroyed memory for any entity, even the
+// one swap-removed into the just-vacated row
+static bool test_for_each_destroy_during_iteration_is_safe() {
+	EntityManager em;
+	Entity a = em.create(); em.add<Position>(a, Position{ 0.0f, 0.0f });
+	Entity b = em.create(); em.add<Position>(b, Position{ 1.0f, 1.0f });
+	Entity c = em.create(); em.add<Position>(c, Position{ 2.0f, 2.0f });
+	Entity d = em.create(); em.add<Position>(d, Position{ 3.0f, 3.0f });
+
+	std::vector<Entity> visited;
+	em.view<Position>().for_each([&](Entity e, Position&) {
+		visited.push_back(e);
+		if (e == a) em.destroy(b); // non-last row; d gets swapped into b's old row mid-loop
+	});
+
+	bool visitedExactlyOnce = visited.size() == 3
+		&& std::find(visited.begin(), visited.end(), a) != visited.end()
+		&& std::find(visited.begin(), visited.end(), c) != visited.end()
+		&& std::find(visited.begin(), visited.end(), d) != visited.end();
+
+	auto pa = em.get<Position>(a);
+	auto pc = em.get<Position>(c);
+	auto pd = em.get<Position>(d);
+	bool dataIntact = pa && pa->get().x == 0.0f && pc && pc->get().x == 2.0f && pd && pd->get().x == 3.0f;
+
+	return !em.isAlive(b) && visitedExactlyOnce && dataIntact;
+}
+
+// adding a component to an entity from inside for_each() migrates it to a
+// different archetype mid-loop; every entity must still be visited exactly
+// once and no crash/OOB read should occur
+static bool test_for_each_add_component_during_iteration_is_safe() {
+	EntityManager em;
+	Entity a = em.create(); em.add<Position>(a, Position{ 0.0f, 0.0f });
+	Entity b = em.create(); em.add<Position>(b, Position{ 1.0f, 1.0f });
+	Entity c = em.create(); em.add<Position>(c, Position{ 2.0f, 2.0f });
+
+	int visited = 0;
+	em.view<Position>().for_each([&](Entity e, Position&) {
+		++visited;
+		if (e == a) em.add<Velocity>(a, Velocity{ 9.0f, 9.0f }); // migrates a out of this archetype mid-loop
+	});
+
+	return visited == 3 && em.has<Velocity>(a) && em.has<Position>(b) && em.has<Position>(c);
+}
+
 //------------------------------------------------------
 // Removal / swap-remove semantics
 //------------------------------------------------------
@@ -298,6 +397,45 @@ static bool test_destroy_preserves_sibling_component_data() {
 	});
 
 	return ok;
+}
+
+// add<T>() on a non-last entity removes it from its old archetype's middle
+// row, swapping the last row into that slot; verify the swapped-in entity's
+// EntityTable row index gets patched, not just its raw storage
+static bool test_add_middle_row_updates_swapped_entity() {
+	EntityManager em;
+	Entity a = em.create(); em.add<Position>(a, Position{ 1.0f, 1.0f });
+	Entity b = em.create(); em.add<Position>(b, Position{ 2.0f, 2.0f });
+	Entity c = em.create(); em.add<Position>(c, Position{ 3.0f, 3.0f }); // last row; gets swapped into a's old slot
+
+	em.add<Velocity>(a, Velocity{ 9.0f, 9.0f }); // migrates a out; triggers the swap in the Position-only archetype
+
+	auto pb = em.get<Position>(b);
+	auto pc = em.get<Position>(c);
+
+	return em.has<Velocity>(a) && !em.has<Velocity>(b) && !em.has<Velocity>(c)
+		&& pb && pb->get().x == 2.0f && pb->get().y == 2.0f
+		&& pc && pc->get().x == 3.0f && pc->get().y == 3.0f;
+}
+
+// remove<T>() on a non-last entity triggers the same middle-row swap as
+// add<T>() above, but from the removal path
+static bool test_remove_middle_row_updates_swapped_entity() {
+	EntityManager em;
+	Entity a = em.create(); em.add<Position>(a, Position{ 1.0f, 1.0f }); em.add<Velocity>(a, Velocity{ 1.0f, 1.0f });
+	Entity b = em.create(); em.add<Position>(b, Position{ 2.0f, 2.0f }); em.add<Velocity>(b, Velocity{ 2.0f, 2.0f });
+	Entity c = em.create(); em.add<Position>(c, Position{ 3.0f, 3.0f }); em.add<Velocity>(c, Velocity{ 3.0f, 3.0f }); // last row
+
+	em.remove<Velocity>(a); // migrates a out of the Position+Velocity archetype; c swaps into a's old row
+
+	auto pb = em.get<Position>(b);
+	auto vb = em.get<Velocity>(b);
+	auto pc = em.get<Position>(c);
+	auto vc = em.get<Velocity>(c);
+
+	return !em.has<Velocity>(a)
+		&& pb && pb->get().x == 2.0f && vb && vb->get().vx == 2.0f
+		&& pc && pc->get().x == 3.0f && vc && vc->get().vx == 3.0f;
 }
 
 //------------------------------------------------------
@@ -340,6 +478,21 @@ static bool test_archetype_edge_caching_is_inverse() {
 	bool roundTrip = (&backToEmpty == &empty);
 
 	return cached && roundTrip;
+}
+
+// removeTarget's own cache-hit branch (from.removeEdge.find(...) hitting),
+// as distinct from the addTarget cache-hit exercised above
+static bool test_remove_edge_cache_hit_returns_same_archetype() {
+	ArchetypeRegistry registry;
+	Archetype& empty = registry.empty();
+	ComponentId posId = ComponentType::get<Position>();
+
+	Archetype& withPos = registry.addTarget(empty, posId, get_component_ops<Position>());
+
+	Archetype& backToEmpty1 = registry.removeTarget(withPos, posId);
+	Archetype& backToEmpty2 = registry.removeTarget(withPos, posId); // second call should hit the cache
+
+	return &backToEmpty1 == &empty && &backToEmpty2 == &empty;
 }
 
 // Archetype::containsAll(): public but unused anywhere else in the
@@ -502,6 +655,38 @@ static bool test_empty_entity_manager_views_visit_nothing() {
 	em.view<>().for_each([&](Entity) { ++visitedAll; });
 
 	return visitedTyped == 0 && visitedAll == 0 && em.size() == 0;
+}
+
+//------------------------------------------------------
+// Query filtering: exclude<T...>
+//------------------------------------------------------
+static bool test_view_exclude_filters_matching_archetypes() {
+	EntityManager em;
+	Entity plain = em.create();
+	em.add<Position>(plain, Position{ 0.0f, 0.0f });
+
+	Entity frozen = em.create();
+	em.add<Position>(frozen, Position{ 1.0f, 1.0f });
+	em.add<Velocity>(frozen, Velocity{ 0.0f, 0.0f });
+
+	std::vector<Entity> excludingVelocity;
+	em.view<Position>().exclude<Velocity>().for_each([&](Entity e, Position&) {
+		excludingVelocity.push_back(e);
+	});
+
+	bool excludesMatchingArchetype = excludingVelocity.size() == 1 && excludingVelocity[0] == plain;
+
+	// excluding a component that's present nowhere in the manager is a no-op
+	std::vector<Entity> excludingUnused;
+	em.view<Position>().exclude<Health>().for_each([&](Entity e, Position&) {
+		excludingUnused.push_back(e);
+	});
+
+	bool noopWhenExcludedComponentUnused = excludingUnused.size() == 2
+		&& std::find(excludingUnused.begin(), excludingUnused.end(), plain) != excludingUnused.end()
+		&& std::find(excludingUnused.begin(), excludingUnused.end(), frozen) != excludingUnused.end();
+
+	return excludesMatchingArchetype && noopWhenExcludedComponentUnused;
 }
 
 //------------------------------------------------------
@@ -676,6 +861,8 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("a new entity has no components", test_new_entity_has_no_components());
 	TESTEX("destroy() invalidates the entity", test_destroy_invalidates_entity());
 	TESTEX("a recycled index gets a new generation", test_recycled_index_gets_new_generation());
+	TESTEX("isAlive() is false for a never-allocated index", test_isAlive_false_for_out_of_range_index());
+	TESTEX("generation keeps advancing across repeated recycle cycles", test_generation_bump_across_multiple_recycle_cycles());
 
 	SUITE("Component add / remove / has");
 	TESTEX("add() sets has() to true", test_add_sets_has());
@@ -696,17 +883,23 @@ void test_main(int argc, char* argv[]) {
 
 	SUITE("Non-trivial component types");
 	TESTEX("a std::string component survives archetype migration", test_non_trivial_component_round_trips());
+	TESTEX("a std::string component survives remove()-triggered migration", test_remove_preserves_non_trivial_component());
 
 	SUITE("view iteration");
 	TESTEX("for_each visits exactly the matching entities", test_view_visits_all_matching_entities());
 	TESTEX("entity-aware for_each visits the expected entities", test_view_entity_aware_overload_visits_expected_entities());
+	TESTEX("destroying an entity from inside for_each is safe", test_for_each_destroy_during_iteration_is_safe());
+	TESTEX("adding a component from inside for_each is safe", test_for_each_add_component_during_iteration_is_safe());
 
 	SUITE("Removal / swap-remove semantics");
 	TESTEX("destroying a middle entity preserves its siblings' data", test_destroy_preserves_sibling_component_data());
+	TESTEX("add() on a middle-row entity patches the swapped-in entity's row", test_add_middle_row_updates_swapped_entity());
+	TESTEX("remove() on a middle-row entity patches the swapped-in entity's row", test_remove_middle_row_updates_swapped_entity());
 
 	SUITE("Archetype identity & signature caching");
 	TESTEX("adding components in a different order interns to the same archetype", test_archetype_order_independent());
 	TESTEX("addTarget/removeTarget caching is a true inverse", test_archetype_edge_caching_is_inverse());
+	TESTEX("removeTarget's own cache-hit branch returns the same archetype", test_remove_edge_cache_hit_returns_same_archetype());
 	TESTEX("containsAll() correctly checks subset/superset/unrelated id sets", test_archetype_contains_all());
 
 	SUITE("Column growth");
@@ -721,6 +914,9 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("view for an unused component visits nothing", test_view_for_unused_component_visits_nothing());
 	TESTEX("zero-arity view visits every entity", test_zero_arity_view_visits_every_entity());
 	TESTEX("a fully empty EntityManager's views visit nothing", test_empty_entity_manager_views_visit_nothing());
+
+	SUITE("Query filtering: exclude<T...>");
+	TESTEX("exclude<T>() filters out archetypes containing T", test_view_exclude_filters_matching_archetypes());
 
 	SUITE("Multi-archetype matrix");
 	TESTEX("queries return exactly the expected entity set across several archetypes", test_multi_archetype_matrix_queries_return_expected_sets());

@@ -115,36 +115,75 @@ public:
 template <typename... Components>
 class EntityView {
 public:
-	explicit EntityView(ArchetypeRegistry& registry) noexcept : registry(&registry) {}
+	explicit EntityView(ArchetypeRegistry& registry, EntityTable& entityTable) noexcept
+		: registry(&registry), entityTable(&entityTable) {}
 
-	// Iterate over all entities with the specified component types and invoke the provided function
+	// exclude entities whose archetype contains any of the given component types
+	template <typename... Excluded>
+	EntityView& exclude() {
+		(excluded.push_back(ComponentType::get<Excluded>()), ...);
+		return *this;
+	}
+
+	// Iterate over all entities with the specified component types (and none of the excluded
+	// types) and invoke the provided function. Safe to add/remove/destroy entities from within
+	// func: entities destroyed or migrated out of the archetype by an earlier callback in this
+	// same for_each are skipped rather than read after they're invalid; entities created during
+	// iteration are not visited.
 	template <typename Func>
 	void for_each(Func&& func) {
 		constexpr std::size_t n = sizeof...(Components);
 		std::array<ComponentId, n> wanted{ ComponentType::get<Components>()... };
 
-		for (const auto& archetype_ptr : registry->all()) {
+		// snapshot the archetype list so interning a new archetype mid-callback (which can
+		// reallocate registry->all()'s backing vector) can't invalidate this iteration
+		std::vector<Archetype*> archetypes_snapshot;
+		archetypes_snapshot.reserve(registry->all().size());
+		for (const auto& archetype_ptr : registry->all())
+			archetypes_snapshot.push_back(archetype_ptr.get());
+
+		for (Archetype* archetype_ptr : archetypes_snapshot) {
 			Archetype& archetype = *archetype_ptr;
 			std::array<int, n> column_index{};
 			bool matches = true;
 
 			for (std::size_t i = 0; i < n; ++i) {
 				int idx = archetype.columnIndexOf(wanted[i]);
-				
+
 				if (idx < 0) {
 					matches = false;
 					break;
 				}
-				
+
 				column_index[i] = idx;
 			}
 
-			if (!matches) 
+			if (matches) {
+				for (ComponentId excluded_id : excluded) {
+					if (archetype.contains(excluded_id)) {
+						matches = false;
+						break;
+					}
+				}
+			}
+
+			if (!matches)
 				continue;
 
-			auto count = archetype.size();
-			for (std::size_t row = 0; row < count; row++) {
-				invoke(func, archetype, column_index, row, std::index_sequence_for<Components...>{});
+			// snapshot this archetype's entities before invoking any callback for it, since
+			// func may destroy/add/remove components and swap-remove rows out from under us
+			std::vector<Entity> row_entities = archetype.entityList();
+
+			for (Entity e : row_entities) {
+				if (!entityTable->isAlive(e))
+					continue;	// destroyed by an earlier callback in this loop
+
+				EntityData& rec = entityTable->record(e);
+
+				if (rec.archetype != &archetype)
+					continue;	// migrated to a different archetype by an earlier callback in this loop
+
+				invoke(func, archetype, column_index, rec.rowIndex, std::index_sequence_for<Components...>{});
 			}
 		}
 	}
@@ -170,6 +209,8 @@ private:
 	}
 
 	ArchetypeRegistry* registry;
+	EntityTable* entityTable;
+	std::vector<ComponentId> excluded;
 };
 
 //----------------------------------------------------------------------------------
@@ -304,7 +345,7 @@ public:
 	// get an iterable view of entities having the requested set of components
 	template <typename... Components>
 	EntityView<Components...> view() noexcept {
-		return EntityView<Components...>(archetypeRegistry);
+		return EntityView<Components...>(archetypeRegistry, entityTable);
 	}
 };
 

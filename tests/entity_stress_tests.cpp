@@ -12,6 +12,7 @@
 
 #include <optional>
 #include <random>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -30,6 +31,9 @@ struct ShadowEntity {
 	std::optional<Position> position;
 	std::optional<Velocity> velocity;
 	std::optional<Health> health;
+	std::optional<std::string> name;
+	std::optional<Radius> radius;
+	std::optional<Bounds> bounds;
 };
 
 bool cross_check(EntityManager& em, Entity e, const ShadowEntity& shadow) {
@@ -56,6 +60,29 @@ bool cross_check(EntityManager& em, Entity e, const ShadowEntity& shadow) {
 		if (!h || h->get().hp != shadow.health->hp) return false;
 	}
 
+	// Name (std::string) participates in churn so the move-construct/destroy
+	// ComponentOps path for a non-trivial type gets exercised by the fuzzer too
+	bool hasName = em.has<Name>(e);
+	if (hasName != shadow.name.has_value()) return false;
+	if (hasName) {
+		auto n = em.get<Name>(e);
+		if (!n || n->get().value != *shadow.name) return false;
+	}
+
+	bool hasRadius = em.has<Radius>(e);
+	if (hasRadius != shadow.radius.has_value()) return false;
+	if (hasRadius) {
+		auto r = em.get<Radius>(e);
+		if (!r || r->get().r != shadow.radius->r) return false;
+	}
+
+	bool hasBounds = em.has<Bounds>(e);
+	if (hasBounds != shadow.bounds.has_value()) return false;
+	if (hasBounds) {
+		auto b = em.get<Bounds>(e);
+		if (!b || b->get().width != shadow.bounds->width || b->get().height != shadow.bounds->height) return false;
+	}
+
 	return true;
 }
 
@@ -67,7 +94,7 @@ static bool test_randomized_churn_matches_shadow_model() {
 	std::vector<Entity> alive;
 
 	std::mt19937 rng(12345); // fixed seed: deterministic and reproducible in CI
-	std::uniform_int_distribution<int> opDist(0, 5);
+	std::uniform_int_distribution<int> opDist(0, 8);
 	std::uniform_real_distribution<float> valDist(-1000.0f, 1000.0f);
 
 	constexpr int Iterations = 5000;
@@ -122,7 +149,37 @@ static bool test_randomized_churn_matches_shadow_model() {
 					s.health.reset();
 				}
 				break;
-			case 5: // mutate an existing component in place through get()
+			case 5: // add or remove Name (the only non-trivial/string component type)
+				if (!s.name) {
+					std::string n = "entity_" + std::to_string(entityIndex(e)) + "_" + std::to_string(iter);
+					em.add<Name>(e, Name{ n });
+					s.name = n;
+				} else {
+					em.remove<Name>(e);
+					s.name.reset();
+				}
+				break;
+			case 6: // add or remove Radius
+				if (!s.radius) {
+					Radius r{ valDist(rng) };
+					em.add<Radius>(e, r);
+					s.radius = r;
+				} else {
+					em.remove<Radius>(e);
+					s.radius.reset();
+				}
+				break;
+			case 7: // add or remove Bounds
+				if (!s.bounds) {
+					Bounds b{ valDist(rng), valDist(rng) };
+					em.add<Bounds>(e, b);
+					s.bounds = b;
+				} else {
+					em.remove<Bounds>(e);
+					s.bounds.reset();
+				}
+				break;
+			case 8: // mutate an existing component in place through get()
 				if (s.position) {
 					auto p = em.get<Position>(e);
 					if (!p) return false;
@@ -196,6 +253,48 @@ static bool test_large_scale_column_growth() {
 }
 
 //------------------------------------------------------
+// Large-scale column growth, non-trivial component: the same
+// reallocation stress as above, but for Name (std::string),
+// where a use-after-move/double-destroy bug in the move-construct
+// path is most likely to surface at scale.
+//------------------------------------------------------
+static bool test_large_scale_column_growth_non_trivial_component() {
+	EntityManager em;
+	constexpr int N = 5000;
+
+	std::vector<Entity> entities;
+	entities.reserve(N);
+	std::unordered_map<Entity, int> indexOf;
+	indexOf.reserve(N * 2);
+
+	for (int i = 0; i < N; ++i) {
+		Entity e = em.create();
+		em.add<Name>(e, Name{ "entity_" + std::to_string(i) });
+		entities.push_back(e);
+		indexOf[e] = i;
+	}
+
+	std::vector<bool> seen(N, false);
+	bool ok = true;
+	int visitedCount = 0;
+
+	em.view<Name>().for_each([&](Entity e, Name& n) {
+		++visitedCount;
+		auto it = indexOf.find(e);
+		if (it == indexOf.end()) { ok = false; return; }
+
+		int i = it->second;
+		seen[static_cast<std::size_t>(i)] = true;
+		ok = ok && n.value == ("entity_" + std::to_string(i));
+	});
+
+	if (visitedCount != N) ok = false;
+	for (bool s : seen) ok = ok && s;
+
+	return ok;
+}
+
+//------------------------------------------------------
 // Archetype explosion: reach every non-empty subset of
 // all 6 component types (63 distinct signatures) via two
 // different add orders each, and confirm both orders land
@@ -243,6 +342,81 @@ static bool test_archetype_explosion_no_duplicate_archetypes() {
 
 	// 63 distinct non-empty subsets, plus the registry's own empty archetype
 	return distinctArchetypes.size() == NumMasks && registry.all().size() == NumMasks + 1;
+}
+
+//------------------------------------------------------
+// Archetype explosion with real data: the test above only checks archetype
+// identity/count against a bare ArchetypeRegistry. This populates one real,
+// live entity per one of the 63 non-empty component-subsets with distinct
+// per-mask values, and verifies both direct get<T>()/has<T>() and view()-based
+// round-trip, so data integrity is actually checked across many simultaneously
+// live, densely populated archetypes.
+//------------------------------------------------------
+static bool test_archetype_explosion_entities_round_trip_via_view() {
+	EntityManager em;
+	constexpr unsigned NumTypes = 6;
+	constexpr unsigned NumMasks = (1u << NumTypes) - 1; // 63 non-empty subsets
+
+	std::vector<Entity> entities(NumMasks + 1, NullEntity); // 1-indexed by mask
+
+	for (unsigned mask = 1; mask <= NumMasks; ++mask) {
+		Entity e = em.create();
+		float v = static_cast<float>(mask);
+
+		if (mask & (1u << 0)) em.add<Position>(e, Position{ v, v });
+		if (mask & (1u << 1)) em.add<Velocity>(e, Velocity{ v, v });
+		if (mask & (1u << 2)) em.add<Radius>(e, Radius{ v });
+		if (mask & (1u << 3)) em.add<Health>(e, Health{ v });
+		if (mask & (1u << 4)) em.add<Bounds>(e, Bounds{ v, v });
+		if (mask & (1u << 5)) em.add<Name>(e, Name{ "mask_" + std::to_string(mask) });
+
+		entities[mask] = e;
+	}
+
+	bool ok = true;
+	for (unsigned mask = 1; mask <= NumMasks; ++mask) {
+		Entity e = entities[mask];
+		float v = static_cast<float>(mask);
+
+		bool wantPos = (mask & (1u << 0)) != 0;
+		bool wantVel = (mask & (1u << 1)) != 0;
+		bool wantRadius = (mask & (1u << 2)) != 0;
+		bool wantHealth = (mask & (1u << 3)) != 0;
+		bool wantBounds = (mask & (1u << 4)) != 0;
+		bool wantName = (mask & (1u << 5)) != 0;
+
+		ok = ok && em.has<Position>(e) == wantPos;
+		ok = ok && em.has<Velocity>(e) == wantVel;
+		ok = ok && em.has<Radius>(e) == wantRadius;
+		ok = ok && em.has<Health>(e) == wantHealth;
+		ok = ok && em.has<Bounds>(e) == wantBounds;
+		ok = ok && em.has<Name>(e) == wantName;
+
+		if (wantPos) { auto p = em.get<Position>(e); ok = ok && p && p->get().x == v && p->get().y == v; }
+		if (wantVel) { auto vv = em.get<Velocity>(e); ok = ok && vv && vv->get().vx == v && vv->get().vy == v; }
+		if (wantRadius) { auto r = em.get<Radius>(e); ok = ok && r && r->get().r == v; }
+		if (wantHealth) { auto h = em.get<Health>(e); ok = ok && h && h->get().hp == v; }
+		if (wantBounds) { auto b = em.get<Bounds>(e); ok = ok && b && b->get().width == v && b->get().height == v; }
+		if (wantName) { auto n = em.get<Name>(e); ok = ok && n && n->get().value == ("mask_" + std::to_string(mask)); }
+	}
+
+	// cross-check via view(): every entity whose mask includes bit 0 (Position)
+	// must be found by view<Position>(), and the count must match exactly
+	int expectedWithPosition = 0;
+	for (unsigned mask = 1; mask <= NumMasks; ++mask) {
+		if (mask & 1u) ++expectedWithPosition;
+	}
+
+	int visitedWithPosition = 0;
+	em.view<Position>().for_each([&](Entity, Position&) { ++visitedWithPosition; });
+	ok = ok && visitedWithPosition == expectedWithPosition;
+
+	// view<>() (visit-all) must see every one of the 63 live entities
+	int visitedAll = 0;
+	em.view<>().for_each([&](Entity) { ++visitedAll; });
+	ok = ok && visitedAll == static_cast<int>(NumMasks);
+
+	return ok;
 }
 
 //------------------------------------------------------
@@ -301,9 +475,11 @@ void test_main(int argc, char* argv[]) {
 
 	SUITE("Large-scale column growth");
 	TESTEX("5000 entities survive many Column::grow() doublings", test_large_scale_column_growth());
+	TESTEX("5000 Name (std::string) entities survive many Column::grow() doublings", test_large_scale_column_growth_non_trivial_component());
 
 	SUITE("Archetype explosion");
 	TESTEX("all 63 non-empty subsets of 6 component types intern without duplicates", test_archetype_explosion_no_duplicate_archetypes());
+	TESTEX("all 63 subsets round-trip real entity data correctly via get()/view()", test_archetype_explosion_entities_round_trip_via_view());
 
 	SUITE("Large nested iteration");
 	TESTEX("160-entity nested view iteration matches the combinatorial reference count", test_large_nested_iteration_matches_reference());
