@@ -76,5 +76,6 @@ const ComponentOps* get_component_ops() noexcept {
         sizeof(T),
         alignof(T),
     };
+
     return &ops;
 }

@@ -14,12 +14,12 @@ private:
 	constexpr static std::size_t MinCapacity = 4;	// minimum capacity for a column, to avoid frequent reallocations
 	constexpr static std::size_t GrowthFactor = 2;	// factor by which to grow the column capacity when needed
 
-	std::byte* data = nullptr;
-	std::size_t count = 0;
-	std::size_t capacity = 0;
+	std::byte* data = nullptr;						// growable storage for component data
+	std::size_t count = 0;							// current number of components
+	std::size_t capacity = 0;						// size of component array
 	const ComponentOps* ops = nullptr;
 
-	// grow storage by doubling
+	// grow storage by GrowthFactor
 	void grow() {
 		std::size_t new_capacity = capacity == 0 ? MinCapacity : capacity * GrowthFactor;
 		auto* new_data = static_cast<std::byte*>(::operator new(new_capacity * ops->size, std::align_val_t{ ops->alignment }));
@@ -29,8 +29,9 @@ private:
 		}
 
 		releaseBuffer();
-		data = new_data;
-		capacity = new_capacity;
+
+		data		= new_data;
+		capacity	= new_capacity;
 	}
 
 	// release the memory block
@@ -46,19 +47,25 @@ private:
 			for (std::size_t i = 0; i < count; i++) {
 				ops->destroy(at(i));
 			}
+
 			releaseBuffer();
-			data = nullptr;
-			count = 0;
-			capacity = 0;
+
+			data		= nullptr;
+			count		= 0;
+			capacity	= 0;
 		}
 	}
 
 public:
 	Column(const ComponentOps* ops) noexcept : ops(ops) {}
 
+	// copy ctor
 	Column(const Column&) = delete;
+
+	// disallow copy assignment
 	Column& operator=(const Column&) = delete;
 
+	// move ctor
 	Column(Column&& other) noexcept
 		: data(other.data), count(other.count), capacity(other.capacity), ops(other.ops) {
 		other.data = nullptr;
@@ -66,6 +73,7 @@ public:
 		other.capacity = 0;
 	}
 
+	// move assignment
 	Column& operator=(Column&& other) noexcept {
 		if (this != &other) {
 			release();
@@ -77,6 +85,7 @@ public:
 			other.count = 0;
 			other.capacity = 0;
 		}
+
 		return *this;
 	}
 
@@ -223,7 +232,7 @@ struct SignatureHash {
 };
 
 //--------------------------------------------------------------------------------------------
-// 
+// The registry tracks all of the archetypes in the system
 //--------------------------------------------------------------------------------------------
 class ArchetypeRegistry
 {

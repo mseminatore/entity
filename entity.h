@@ -72,7 +72,7 @@ public:
 		}
 
 		EntityGeneration generation = entityDataTable[index].generation;
-		Entity entity = (static_cast<Entity>(generation) << 32) | index;
+		Entity entity = makeEntity(index, generation);
 
 		entityDataTable[index] = { generation, archetype, row, true };
 		++liveCount;
@@ -147,6 +147,30 @@ public:
 //----------------------------------------------------------------------------------
 template <typename... Components>
 class EntityView {
+
+private:
+	ArchetypeRegistry* registry;
+	EntityTable* entityTable;
+	std::vector<ComponentId> excluded;
+
+	// Overload: lambda accepts (Components&...)
+	template <typename Func, std::size_t N, std::size_t... I>
+	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::size_t row, std::index_sequence<I...>)
+		-> decltype(func(*static_cast<Components*>(nullptr)...), void())
+	{
+		func(*static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
+	}
+
+	// Overload: lambda accepts (Entity, Components&...)
+	template<typename Func, std::size_t N, std::size_t... I>
+	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::size_t row, std::index_sequence<I...>)
+		-> decltype(func(std::declval<Entity>(), *static_cast<Components*>(nullptr)...), void())
+	{
+		func(archetype.entityAt(row), *static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
+	}
+
 public:
 	explicit EntityView(ArchetypeRegistry& registry, EntityTable& entityTable) noexcept
 		: registry(&registry), entityTable(&entityTable) {}
@@ -216,30 +240,6 @@ public:
 			}
 		}
 	}
-
-private:
-
-	// Overload: lambda accepts (Components&...)
-	template <typename Func, std::size_t N, std::size_t... I>
-	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
-		std::size_t row, std::index_sequence<I...>)
-		-> decltype(func(*static_cast<Components*>(nullptr)...), void())
-	{
-		func(*static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
-	}
-
-	// Overload: lambda accepts (Entity, Components&...)
-	template<typename Func, std::size_t N, std::size_t... I>
-	static auto invoke(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
-		std::size_t row, std::index_sequence<I...>)
-		-> decltype(func(std::declval<Entity>(), *static_cast<Components*>(nullptr)...), void())
-	{
-		func(archetype.entityAt(row), *static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
-	}
-
-	ArchetypeRegistry* registry;
-	EntityTable* entityTable;
-	std::vector<ComponentId> excluded;
 };
 
 //----------------------------------------------------------------------------------
@@ -256,6 +256,14 @@ private:
 	// spawns of the same shape after the first skip rebuilding/re-hashing the signature; see
 	// create<Components...>() below
 	std::vector<Archetype*> createShapeCache;
+
+	// placement-constructs each of `components` into its column at `row`, using `ids[I]`
+	// (in original, pre-sort pack order) to find that component's column
+	template <std::size_t N, std::size_t... I, typename... Components>
+	static void constructComponents(Archetype& archetype, std::size_t row, const std::array<ComponentId, N>& ids,
+		std::index_sequence<I...>, Components&&... components) {
+		(new (archetype.column(archetype.columnIndexOf(ids[I])).at(row)) std::decay_t<Components>(std::forward<Components>(components)), ...);
+	}
 
 public:
     Entity create() {
@@ -438,14 +446,4 @@ public:
 	EntityView<Components...> view() noexcept {
 		return EntityView<Components...>(archetypeRegistry, entityTable);
 	}
-
-private:
-	// placement-constructs each of `components` into its column at `row`, using `ids[I]`
-	// (in original, pre-sort pack order) to find that component's column
-	template <std::size_t N, std::size_t... I, typename... Components>
-	static void constructComponents(Archetype& archetype, std::size_t row, const std::array<ComponentId, N>& ids,
-		std::index_sequence<I...>, Components&&... components) {
-		(new (archetype.column(archetype.columnIndexOf(ids[I])).at(row)) std::decay_t<Components>(std::forward<Components>(components)), ...);
-	}
 };
-

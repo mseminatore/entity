@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-using EntityList = std::vector<Entity>;
-
 bool done = false;
 
 //--------------------------------------------------------------------------------------------
@@ -197,7 +195,6 @@ void initializeGame(EntityManager& entityManager, const std::string& entityFile)
 int main(int argc, char* argv[])
 {
 	EntityManager entityManager;
-	//EntityList entities;
 
 	const char* entityFile = argc > 1 ? argv[1] : "entities.txt";
 	initializeGame(entityManager, entityFile);
