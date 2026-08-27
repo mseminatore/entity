@@ -141,6 +141,9 @@ public:
 	std::size_t size() const noexcept { return entities.size(); }
 	const std::vector<ComponentId>& type_ids() const noexcept { return componentTypes; }
 
+	// reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
+	void reserve(std::size_t n) { entities.reserve(n); }
+
 	int columnIndexOf(ComponentId id) const noexcept {
 		for (std::size_t i = 0; i < componentTypes.size(); ++i) {
 			if (componentTypes[i] == id) {

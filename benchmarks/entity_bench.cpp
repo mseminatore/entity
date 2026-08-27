@@ -69,15 +69,34 @@ constexpr std::size_t N_REMOVECHAIN = 200'000;
 constexpr std::size_t N_RANDOMACCESS = 1'000'000;
 constexpr std::size_t N_FOREACH = 1'000'000;
 constexpr std::size_t N_FOREACH_FRAGMENTED = 1'000'000;
-constexpr unsigned FragmentedOtherTypeCount = 5; // Velocity, Radius, Health, Bounds, Name
-constexpr unsigned FragmentedArchetypeCount = 1u << FragmentedOtherTypeCount; // 32
+constexpr unsigned FragmentedOtherTypeCount = 4; // Radius, Health, Bounds, Name (Position and Velocity are on every archetype, to match the single-archetype benchmark's per-entity work)
+constexpr unsigned FragmentedArchetypeCount = 1u << FragmentedOtherTypeCount; // 16
 constexpr std::size_t NumRocks = 200;
 constexpr std::size_t NumMissiles = 200;
+constexpr std::size_t NumRocksLarge = 2'000;
+constexpr std::size_t NumMissilesLarge = 2'000;
 constexpr int Repeats = 5;
 
 void bench_create() {
 	bench::run("create(): bulk create N entities", N_CREATE, Repeats,
 		[]() { return EntityManager{}; },
+		[](EntityManager& em) -> long long {
+			long long sink = 0;
+			for (std::size_t i = 0; i < N_CREATE; ++i) {
+				Entity e = em.create();
+				sink += static_cast<long long>(entityIndex(e));
+			}
+			return sink;
+		});
+}
+
+void bench_create_reserved() {
+	bench::run("create(): bulk create N entities (reserved)", N_CREATE, Repeats,
+		[]() {
+			EntityManager em;
+			em.reserve(N_CREATE);
+			return em;
+		},
 		[](EntityManager& em) -> long long {
 			long long sink = 0;
 			for (std::size_t i = 0; i < N_CREATE; ++i) {
@@ -223,7 +242,7 @@ void bench_foreach_single_archetype() {
 }
 
 void bench_foreach_fragmented() {
-	bench::run("view().for_each(): fragmented across 32 archetypes", N_FOREACH_FRAGMENTED, Repeats,
+	bench::run("view().for_each(): fragmented across 16 archetypes", N_FOREACH_FRAGMENTED, Repeats,
 		[]() {
 			ManagerAndEntities state;
 			std::size_t perArchetype = N_FOREACH_FRAGMENTED / FragmentedArchetypeCount;
@@ -233,12 +252,15 @@ void bench_foreach_fragmented() {
 				for (std::size_t i = 0; i < perArchetype; ++i) {
 					Entity e = state.em.create();
 					float v = static_cast<float>(i);
-					state.em.add<Position>(e, Position{ v, v }); // every archetype here has Position
-					if (mask & 1u) state.em.add<Velocity>(e, Velocity{ v, v });
-					if (mask & 2u) state.em.add<Radius>(e, Radius{ v });
-					if (mask & 4u) state.em.add<Health>(e, Health{ v });
-					if (mask & 8u) state.em.add<Bounds>(e, Bounds{ v, v });
-					if (mask & 16u) state.em.add<Name>(e, Name{ "e" });
+					// Position and Velocity are on every archetype here (matching the
+					// single-archetype benchmark's per-entity work), so the only
+					// difference between the two benchmarks is archetype fan-out.
+					state.em.add<Position>(e, Position{ v, 0.0f });
+					state.em.add<Velocity>(e, Velocity{ 1.0f, 1.0f });
+					if (mask & 1u) state.em.add<Radius>(e, Radius{ v });
+					if (mask & 2u) state.em.add<Health>(e, Health{ v });
+					if (mask & 4u) state.em.add<Bounds>(e, Bounds{ v, v });
+					if (mask & 8u) state.em.add<Name>(e, Name{ "e" });
 					state.entities.push_back(e);
 				}
 			}
@@ -246,26 +268,32 @@ void bench_foreach_fragmented() {
 		},
 		[](ManagerAndEntities& state) -> long long {
 			double sum = 0.0;
-			state.em.view<Position>().for_each([&](Position& p) {
+			state.em.view<Position, Velocity>().for_each([&](Position& p, Velocity& v) {
+				p.x += v.vx;
 				sum += p.x;
 			});
 			return static_cast<long long>(sum);
 		});
 }
 
-void bench_nested_view() {
-	constexpr std::size_t opCount = (NumRocks + NumMissiles) * NumMissiles; // total inner-loop invocations
+// `numRocks`/`numMissiles` scale the O(R*M) shape -- run at both a small scale (matching
+// main.cpp's demo counts) and a larger one, since the per-op ns/op at 200/200 is dominated
+// by the whole working set fitting in cache and doesn't show how the snapshot-allocation-
+// per-outer-iteration cost (EntityView::for_each, entity.h) and the O(R*M) growth actually
+// compound once entity counts approach what a real game's broad-phase might see.
+void bench_nested_view(const char* name, std::size_t numRocks, std::size_t numMissiles) {
+	std::size_t opCount = (numRocks + numMissiles) * numMissiles; // total inner-loop invocations
 
-	bench::run("nested view(): collision-shaped O(R*M) iteration", opCount, Repeats,
-		[]() {
+	bench::run(name, opCount, Repeats,
+		[=]() {
 			ManagerAndEntities state;
-			for (std::size_t i = 0; i < NumRocks; ++i) {
+			for (std::size_t i = 0; i < numRocks; ++i) {
 				Entity e = state.em.create();
 				state.em.add<Position>(e, Position{ static_cast<float>(i), 0.0f });
 				state.em.add<Radius>(e, Radius{ 1.0f });
 				state.em.add<Name>(e, Name{ "Rock" });
 			}
-			for (std::size_t i = 0; i < NumMissiles; ++i) {
+			for (std::size_t i = 0; i < numMissiles; ++i) {
 				Entity e = state.em.create();
 				state.em.add<Position>(e, Position{ static_cast<float>(i), 1.0f });
 				state.em.add<Velocity>(e, Velocity{ 0.0f, 0.0f });
@@ -293,6 +321,7 @@ int main() {
 	std::printf("---------------------------------------------------------------------------------------------------------------\n");
 
 	bench_create();
+	bench_create_reserved();
 	bench_destroy();
 	bench_churn();
 	bench_add_chain();
@@ -300,7 +329,8 @@ int main() {
 	bench_random_access();
 	bench_foreach_single_archetype();
 	bench_foreach_fragmented();
-	bench_nested_view();
+	bench_nested_view("nested view(): collision-shaped O(R*M) iteration (200 rocks/200 missiles)", NumRocks, NumMissiles);
+	bench_nested_view("nested view(): collision-shaped O(R*M) iteration (2000 rocks/2000 missiles)", NumRocksLarge, NumMissilesLarge);
 
 	return 0;
 }

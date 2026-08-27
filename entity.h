@@ -81,6 +81,9 @@ public:
 	// number of currently alive entities
 	std::size_t size() const noexcept { return liveCount; }
 
+	// reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
+	void reserve(std::size_t n) { entityDataTable.reserve(n); }
+
 	bool isAlive(Entity entity) const noexcept {
 		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
 
@@ -254,6 +257,16 @@ public:
 		entityTable.setLocation(e, &empty, row);			// set the entity's location in the entity table
 
 		return e;
+	}
+
+	// Reserve capacity for at least `n` entities, to avoid repeated vector growth when
+	// bulk-creating (e.g. spawning a level's worth of entities up front). Every new entity
+	// starts in the empty archetype, so this only needs to cover the entity table and that
+	// archetype's entity list -- components added afterward still grow their own archetype's
+	// storage on demand.
+	void reserve(std::size_t n) {
+		entityTable.reserve(n);
+		archetypeRegistry.empty().reserve(n);
 	}
 
 	// Destroy an entity by removing it from its archetype and marking it as dead in the entity table

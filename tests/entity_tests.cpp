@@ -78,6 +78,36 @@ static bool test_generation_bump_across_multiple_recycle_cycles() {
 	return ok;
 }
 
+// reserve() is purely a capacity hint -- entities created afterward must behave
+// identically to unreserved ones (correct handles, no components, alive)
+static bool test_reserve_then_create_entities_are_correct() {
+	EntityManager em;
+	em.reserve(100);
+
+	std::vector<Entity> entities;
+	for (int i = 0; i < 100; ++i)
+		entities.push_back(em.create());
+
+	for (Entity e : entities) {
+		if (!em.isAlive(e) || em.has<Position>(e))
+			return false;
+	}
+
+	return em.size() == 100;
+}
+
+// reserving after entities already exist must not disturb their data
+static bool test_reserve_after_existing_entities_preserves_them() {
+	EntityManager em;
+	Entity e = em.create();
+	em.add<Position>(e, Position{ 1.0f, 2.0f });
+
+	em.reserve(50);
+
+	auto p = em.get<Position>(e);
+	return em.isAlive(e) && p.has_value() && p->get().x == 1.0f && p->get().y == 2.0f;
+}
+
 //------------------------------------------------------
 // Component add / remove / has
 //------------------------------------------------------
@@ -863,6 +893,8 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("a recycled index gets a new generation", test_recycled_index_gets_new_generation());
 	TESTEX("isAlive() is false for a never-allocated index", test_isAlive_false_for_out_of_range_index());
 	TESTEX("generation keeps advancing across repeated recycle cycles", test_generation_bump_across_multiple_recycle_cycles());
+	TESTEX("reserve() then create() produces correct entities", test_reserve_then_create_entities_are_correct());
+	TESTEX("reserve() after existing entities preserves their data", test_reserve_after_existing_entities_preserves_them());
 
 	SUITE("Component add / remove / has");
 	TESTEX("add() sets has() to true", test_add_sets_has());
