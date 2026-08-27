@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <functional>
 #include <type_traits>
+#include <utility>
 
 // Enforces a library precondition unconditionally, independent of NDEBUG. Violating one of
 // these is a contract violation (see CLAUDE.md), not a runtime condition to recover from, so
@@ -249,6 +251,12 @@ private:
 	EntityTable entityTable;				// table of entity data, indexed by entity index
 	ArchetypeRegistry archetypeRegistry;	// registry of archetypes, indexed by archetype id
 
+	// per-instance cache from ComponentSetType::get<Components...>() (a distinct id per
+	// create<Components...>() instantiation) to the archetype it resolves to, so repeated
+	// spawns of the same shape after the first skip rebuilding/re-hashing the signature; see
+	// create<Components...>() below
+	std::vector<Archetype*> createShapeCache;
+
 public:
     Entity create() {
 		Archetype &empty = archetypeRegistry.empty();		// initial archetype for new entities
@@ -267,6 +275,52 @@ public:
 	void reserve(std::size_t n) {
 		entityTable.reserve(n);
 		archetypeRegistry.empty().reserve(n);
+	}
+
+	// Create an entity with the given components already attached, constructing each one in
+	// place in the entity's final archetype. Unlike create() followed by one add<T>() per
+	// component, this never visits an intermediate archetype: each already-placed component
+	// would otherwise be move-constructed again on every subsequent add<T>() call, and this
+	// skips all of that by resolving the final archetype up front.
+	template <typename... Components>
+	Entity create(Components&&... components) {
+		constexpr std::size_t n = sizeof...(Components);
+		std::array<ComponentId, n> ids{ ComponentType::get<std::decay_t<Components>>()... };
+
+		ComponentId shapeId = ComponentSetType::get<std::decay_t<Components>...>();
+		if (shapeId >= createShapeCache.size())
+			createShapeCache.resize(shapeId + 1, nullptr);
+
+		Archetype*& cached = createShapeCache[shapeId];
+		if (!cached) {
+			std::array<const ComponentOps*, n> ops{ get_component_ops<std::decay_t<Components>>()... };
+
+			// canonicalize into sorted signature order, same convention archetypes are interned by
+			std::array<std::size_t, n> order{};
+			for (std::size_t i = 0; i < n; ++i) order[i] = i;
+			std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return ids[a] < ids[b]; });
+
+			Signature sig(n);
+			std::vector<const ComponentOps*> sortedOps(n);
+			for (std::size_t i = 0; i < n; ++i) {
+				sig[i] = ids[order[i]];
+				sortedOps[i] = ops[order[i]];
+			}
+
+			// forSignature() asserts sig is duplicate-free, which also catches a repeated
+			// component type in Components... here
+			cached = &archetypeRegistry.forSignature(sig, sortedOps);
+		}
+
+		Archetype& archetype = *cached;
+
+		Entity e = entityTable.create(&archetype, 0);
+		auto row = archetype.pushUninitializedRow(e);
+		entityTable.setLocation(e, &archetype, row);
+
+		constructComponents(archetype, row, ids, std::index_sequence_for<Components...>{}, std::forward<Components>(components)...);
+
+		return e;
 	}
 
 	// Destroy an entity by removing it from its archetype and marking it as dead in the entity table
@@ -383,6 +437,15 @@ public:
 	template <typename... Components>
 	EntityView<Components...> view() noexcept {
 		return EntityView<Components...>(archetypeRegistry, entityTable);
+	}
+
+private:
+	// placement-constructs each of `components` into its column at `row`, using `ids[I]`
+	// (in original, pre-sort pack order) to find that component's column
+	template <std::size_t N, std::size_t... I, typename... Components>
+	static void constructComponents(Archetype& archetype, std::size_t row, const std::array<ComponentId, N>& ids,
+		std::index_sequence<I...>, Components&&... components) {
+		(new (archetype.column(archetype.columnIndexOf(ids[I])).at(row)) std::decay_t<Components>(std::forward<Components>(components)), ...);
 	}
 };
 

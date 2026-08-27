@@ -108,6 +108,50 @@ static bool test_reserve_after_existing_entities_preserves_them() {
 	return em.isAlive(e) && p.has_value() && p->get().x == 1.0f && p->get().y == 2.0f;
 }
 
+// create<Components...>() must place the entity directly into an archetype with exactly
+// the given components, all constructed with the values passed in
+static bool test_create_with_components_sets_all_values() {
+	EntityManager em;
+	Entity e = em.create(Position{ 1.0f, 2.0f }, Velocity{ 3.0f, 4.0f }, Name{ "hero" });
+
+	auto p = em.get<Position>(e);
+	auto v = em.get<Velocity>(e);
+	auto name = em.get<Name>(e);
+
+	return em.isAlive(e)
+		&& p.has_value() && p->get().x == 1.0f && p->get().y == 2.0f
+		&& v.has_value() && v->get().vx == 3.0f && v->get().vy == 4.0f
+		&& name.has_value() && name->get().value == "hero"
+		&& !em.has<Radius>(e);
+}
+
+// forSignature() -- the archetype lookup EntityManager::create<Components...>() uses to place
+// a new entity directly into its final archetype -- must intern to the same archetype as
+// addTarget()-chaining does for the equivalent component set, given the same canonical
+// (ascending id) signature EntityManager::create<Components...>() always builds before calling it
+static bool test_for_signature_interns_same_archetype_as_add_chain() {
+	ArchetypeRegistry registry;
+	Archetype& empty = registry.empty();
+
+	ComponentId posId = ComponentType::get<Position>();
+	ComponentId velId = ComponentType::get<Velocity>();
+
+	Archetype& viaChain = registry.addTarget(
+		registry.addTarget(empty, posId, get_component_ops<Position>()),
+		velId, get_component_ops<Velocity>());
+
+	Signature sig = { posId, velId };
+	std::vector<const ComponentOps*> ops = { get_component_ops<Position>(), get_component_ops<Velocity>() };
+	if (sig[0] > sig[1]) {
+		std::swap(sig[0], sig[1]);
+		std::swap(ops[0], ops[1]);
+	}
+
+	Archetype& viaSignature = registry.forSignature(sig, ops);
+
+	return &viaChain == &viaSignature;
+}
+
 //------------------------------------------------------
 // Component add / remove / has
 //------------------------------------------------------
@@ -895,6 +939,7 @@ void test_main(int argc, char* argv[]) {
 	TESTEX("generation keeps advancing across repeated recycle cycles", test_generation_bump_across_multiple_recycle_cycles());
 	TESTEX("reserve() then create() produces correct entities", test_reserve_then_create_entities_are_correct());
 	TESTEX("reserve() after existing entities preserves their data", test_reserve_after_existing_entities_preserves_them());
+	TESTEX("create(Components...) sets all component values", test_create_with_components_sets_all_values());
 
 	SUITE("Component add / remove / has");
 	TESTEX("add() sets has() to true", test_add_sets_has());
@@ -930,6 +975,7 @@ void test_main(int argc, char* argv[]) {
 
 	SUITE("Archetype identity & signature caching");
 	TESTEX("adding components in a different order interns to the same archetype", test_archetype_order_independent());
+	TESTEX("forSignature() interns the same archetype as an equivalent addTarget chain", test_for_signature_interns_same_archetype_as_add_chain());
 	TESTEX("addTarget/removeTarget caching is a true inverse", test_archetype_edge_caching_is_inverse());
 	TESTEX("removeTarget's own cache-hit branch returns the same archetype", test_remove_edge_cache_hit_returns_same_archetype());
 	TESTEX("containsAll() correctly checks subset/superset/unrelated id sets", test_archetype_contains_all());

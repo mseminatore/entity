@@ -28,6 +28,28 @@ public:
 };
 
 //--------------------------------------------------------------------------------------------
+// The ComponentSetType class generates a unique, process-wide id for each distinct ordered
+// pack of component types. Unlike ComponentType::get<T>() (one id per component), this gives
+// callers a way to index a small per-instance cache (e.g. a vector) by "which
+// create<Components...>() instantiation is this", with no hashing or allocation involved.
+//--------------------------------------------------------------------------------------------
+class ComponentSetType
+{
+private:
+    static ComponentId next() noexcept {
+        static ComponentId counter = 0;
+        return counter++;
+    }
+
+public:
+    template <typename... Components>
+    static ComponentId get() noexcept {
+        static const ComponentId id = next();
+        return id;
+    }
+};
+
+//--------------------------------------------------------------------------------------------
 // Archetypes delegate typesafe component operations to this helper
 // The ComponentOps struct defines operations for moving and destroying components
 // as well as their size and alignment. 

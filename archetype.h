@@ -257,6 +257,20 @@ public:
 
 	Archetype& empty() noexcept { return *emptyArchetype; }
 
+	// Returns the archetype for the given signature, creating it if necessary. Unlike
+	// addTarget/removeTarget, this doesn't require starting from an existing archetype --
+	// used by EntityManager::create<Components...>() to place a new entity directly into its
+	// final archetype in one step. `sig` must already be canonical (strictly ascending,
+	// duplicate-free) -- the same order addTarget/removeTarget chains always produce -- since
+	// a non-canonical signature would intern as a distinct (bogus) archetype rather than
+	// matching the one addTarget/removeTarget would reach for the same component set.
+	Archetype& forSignature(const Signature& sig, const std::vector<const ComponentOps*>& ops) {
+		for (std::size_t i = 1; i < sig.size(); ++i)
+			ENTITY_ASSERT(sig[i - 1] < sig[i] && "forSignature() requires a canonical (ascending, duplicate-free) signature");
+
+		return get_or_create(sig, ops);
+	}
+
 	// Returns the archetype reached from `from` by adding component
 	// `added_id` (whose ops are `added_ops`), creating it if necessary.
 	Archetype& addTarget(Archetype& from, ComponentId added_id, const ComponentOps* added_ops) {

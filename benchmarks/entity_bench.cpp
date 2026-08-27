@@ -161,6 +161,43 @@ void bench_add_chain() {
 		});
 }
 
+// The next two benchmarks compare two ways to spawn a brand-new 4-component entity from
+// scratch: create<T...>() can't retrofit an already-existing entity (it's a spawn-time-only
+// API), so unlike bench_add_chain above -- whose setup pre-creates bare entities untimed,
+// isolating just the per-add<T>() migration cost -- both of these time the entity's creation
+// together with attaching all 4 components, since that's the real end-to-end choice being made
+void bench_spawn_via_add_chain() {
+	bench::run("spawn: create()+add<T>() chain (per component)", N_ADDCHAIN * 4, Repeats,
+		[]() { return EntityManager{}; },
+		[](EntityManager& em) -> long long {
+			long long sink = 0;
+			for (std::size_t i = 0; i < N_ADDCHAIN; ++i) {
+				float v = static_cast<float>(i);
+				Entity e = em.create();
+				em.add<Position>(e, Position{ v, v });
+				em.add<Velocity>(e, Velocity{ v, -v });
+				em.add<Radius>(e, Radius{ v });
+				em.add<Name>(e, Name{ "e" + std::to_string(i) });
+				sink += static_cast<long long>(em.has<Name>(e));
+			}
+			return sink;
+		});
+}
+
+void bench_spawn_via_create_batch() {
+	bench::run("spawn: create<T...>() batch construct (per component)", N_ADDCHAIN * 4, Repeats,
+		[]() { return EntityManager{}; },
+		[](EntityManager& em) -> long long {
+			long long sink = 0;
+			for (std::size_t i = 0; i < N_ADDCHAIN; ++i) {
+				float v = static_cast<float>(i);
+				Entity e = em.create(Position{ v, v }, Velocity{ v, -v }, Radius{ v }, Name{ "e" + std::to_string(i) });
+				sink += static_cast<long long>(em.has<Name>(e));
+			}
+			return sink;
+		});
+}
+
 void bench_remove_chain() {
 	bench::run("remove<T>(): 4-component teardown chain (per remove() call)", N_REMOVECHAIN * 4, Repeats,
 		[]() {
@@ -325,6 +362,8 @@ int main() {
 	bench_destroy();
 	bench_churn();
 	bench_add_chain();
+	bench_spawn_via_add_chain();
+	bench_spawn_via_create_batch();
 	bench_remove_chain();
 	bench_random_access();
 	bench_foreach_single_archetype();
