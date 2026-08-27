@@ -19,12 +19,19 @@ over a query only touches matching archetypes.
 - Generation-checked entity handles — a stale handle safely fails `isAlive()` even after
   its index is recycled
 - Simple query API (`view<Components...>()`) supporting both
-  `func(Components&...)` and `func(Entity, Components&...)` callback shapes
+  `func(Components&...)` and `func(Entity, Components&...)` callback shapes, plus
+  `.exclude<Excluded...>()` filtering
+- Safe to `add`/`remove`/`destroy` entities from inside a `for_each` callback — an entity
+  destroyed or migrated out mid-iteration by an earlier callback is skipped safely rather
+  than read after it's invalid
+- Precondition contracts (e.g. `add<T>` on an already-present component, an operation on a
+  dead entity) are enforced unconditionally via `ENTITY_ASSERT`, independent of `NDEBUG` —
+  a Release build still traps a violation with a clean abort instead of undefined behavior
 
 ## Requirements
 
 - A C++23 compiler
-- CMake 3.10+
+- CMake 3.20+
 
 ## Getting started
 
@@ -44,7 +51,8 @@ cmake -S . -B build
 cmake --build build
 ```
 
-This produces the `entity` demo executable and the test binaries under `build/tests`.
+This produces the `entity` demo executable, the test binaries under `build/tests`, and the
+benchmark binary under `build/benchmarks`.
 
 ## Usage
 
@@ -65,6 +73,11 @@ entityManager.add<Velocity>(e, Velocity{ 1.0f, 0.0f });
 entityManager.view<Position, Velocity>().for_each([](Position& p, Velocity& v) {
     p.x += v.vx;
     p.y += v.vy;
+});
+
+// ... or exclude entities that also have a given component
+entityManager.view<Position>().exclude<Velocity>().for_each([](Position& p) {
+    // only entities with Position and no Velocity
 });
 
 // query for a single entity's component
@@ -97,6 +110,23 @@ Each test binary can also be run directly for colored, per-case output:
 ```sh
 ./build/tests/entity_tests
 ./build/tests/entity_stress_tests
+```
+
+## Benchmarks
+
+A microbenchmark suite lives under `benchmarks/`, covering entity create/destroy,
+component add/remove migration chains, random component access, and `view().for_each()`
+iteration (including a fragmented-across-many-archetypes case and a collision-shaped
+nested-view case). It's a manually-run dev tool for measuring the cost of local changes to
+`entity.h`/`archetype.h` — it isn't registered with CTest, since timing isn't a pass/fail
+signal.
+
+The `entity_bench` target always builds with `-O2`/`/O2` regardless of the top-level
+configure (no `CMAKE_BUILD_TYPE` is set by default, so an unoptimized build would give
+meaningless numbers):
+
+```sh
+./build/benchmarks/entity_bench
 ```
 
 ## License
