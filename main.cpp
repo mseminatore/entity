@@ -27,6 +27,7 @@ void collisionSystem(EntityManager& entityManager)
 			float dy = p1.y - p2.y;
 			float distanceSquared = dx * dx + dy * dy;
 			float radiusSum = r1.r + r2.r;
+
 			if (distanceSquared < radiusSum * radiusSum) {
 				printf("Collision detected between '%s' and '%s'!\n", name1.value.c_str(), name2.value.c_str());
 				toDestroy.push_back(e2); // mark the second entity for destruction
@@ -37,9 +38,11 @@ void collisionSystem(EntityManager& entityManager)
 	// destroy all entities that were marked for destruction
 	for (Entity e : toDestroy) {
 		if (entityManager.isAlive(e)) {
+
 			if (auto name = entityManager.get<Name>(e)) {
 				printf("Destroying entity '%s' (%" PRIu64 ") due to collision.\n", name->get().value.c_str(), e);
 			}
+
 			entityManager.destroy(e);
 		}
 	}
