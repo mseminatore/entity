@@ -5,13 +5,13 @@
 A small, header-only, archetype-based Entity Component System (ECS) for C++23.
 
 Entities are cheap, generation-checked handles. Components are plain structs with no base
-class or registration boilerplate. Entities are grouped into archetypes by their exact set
-of component types, so components of the same type are stored contiguously and iteration
-over a query only touches matching archetypes.
+class. Entities are grouped into archetypes by their exact set of component types, so 
+components of the same type are stored contiguously in memory and iteration over a 
+query/view only touches matching archetypes.
 
 ## Features
 
-- Header-only: `entity.h`, `archetype.h`, `component_props.h`
+- Header-only: `entity.h`
 - Type-erased, archetype-based storage — no inheritance or virtual dispatch on components
 - Automatic archetype interning: the same final component set always maps to the same
   archetype, regardless of the order components were added in
@@ -28,7 +28,7 @@ over a query only touches matching archetypes.
   dead entity) are enforced unconditionally via `ENTITY_ASSERT`, independent of `NDEBUG` —
   a Release build still traps a violation with a clean abort instead of undefined behavior
 
-## Requirements
+## Minimum Requirements
 
 - A C++23 compiler
 - CMake 3.20+
@@ -54,14 +54,16 @@ cmake --build build
 This produces the `entity` demo executable, the test binaries under `build/tests`, and the
 benchmark binary under `build/benchmarks`.
 
-## Usage
+## Basic Usage
 
 ```cpp
 #include "entity.h"
 
+// define some Components
 struct Position { float x, y; };
 struct Velocity { float vx, vy; };
 
+// instantiate the entity manager
 EntityManager entityManager;
 
 // create an entity and attach components
@@ -91,11 +93,11 @@ entityManager.destroy(e);
 
 See `main.cpp` for a more complete example (a small game loop with movement and collision systems).
 
-## Testing
+## Unit Testing
 
-Tests run via CTest and are split into two targets:
+Tests are run using CTest, for local and CI testing, and are split into two targets:
 
-- `entity_tests` — the fast, everyday correctness suite
+- `entity_tests` — fast, correctness suite
 - `entity_stress_tests` — larger-scale/randomized tests, tagged with the CTest label `stress`
 
 ```sh
@@ -105,7 +107,7 @@ ctest -LE stress                # fast suite only
 ctest -L stress                 # stress suite only
 ```
 
-Each test binary can also be run directly for colored, per-case output:
+Each test binary can be run directly for detailed, syntax-colored, test-case output:
 
 ```sh
 ./build/tests/entity_tests
@@ -114,12 +116,12 @@ Each test binary can also be run directly for colored, per-case output:
 
 ## Benchmarks
 
-A microbenchmark suite lives under `benchmarks/`, covering entity create/destroy,
+A micro benchmark suite lives under `benchmarks/`, covering entity create/destroy,
 component add/remove migration chains, random component access, and `view().for_each()`
 iteration (including a fragmented-across-many-archetypes case and a collision-shaped
 nested-view case). It's a manually-run dev tool for measuring the cost of local changes to
 `entity.h`/`archetype.h` — it isn't registered with CTest, since timing isn't a pass/fail
-signal.
+criteria.
 
 The `entity_bench` target always builds with `-O2`/`/O2` regardless of the top-level
 configure (no `CMAKE_BUILD_TYPE` is set by default, so an unoptimized build would give
@@ -128,7 +130,3 @@ meaningless numbers):
 ```sh
 ./build/benchmarks/entity_bench
 ```
-
-## License
-
-MIT — see [LICENSE](LICENSE).

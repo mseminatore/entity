@@ -11,14 +11,14 @@
 #include <type_traits>
 #include <utility>
 
-// Enforces a library precondition unconditionally, independent of NDEBUG. Violating one of
-// these is a contract violation (see CLAUDE.md), not a runtime condition to recover from, so
-// the only thing this needs to do is turn it into a clean, debuggable abort instead of letting
+// Enforces an assert unconditionally, independent of NDEBUG. Violating this assertion
+// is a calling contract violation not a runtime error to handle and recover. So
+// the only thing this needs to do is provide a debuggable abort instead of letting
 // a stripped-out assert() let the violation through as undefined behavior in a Release build.
 #define ENTITY_ASSERT(cond) \
 	do { \
 		if (!(cond)) { \
-			std::fprintf(stderr, "entity: precondition violated: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
+			std::fprintf(stderr, "entity: assertion violated: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
 			std::abort(); \
 		} \
 	} while (0)
