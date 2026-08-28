@@ -8,6 +8,7 @@
 #include <array>
 #include <optional>
 #include <functional>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -24,7 +25,12 @@
 	} while (0)
 
 using Entity = std::uint64_t;
-constexpr Entity NullEntity = 0xFFFFFFFF;	// a null entity handle, representing an invalid or non-existent entity
+
+// A null entity handle, representing an invalid or non-existent entity. Deliberately all bits
+// set (generation AND index at max), not just index at max: a real entity handle would need
+// that one specific index to also be individually destroyed-and-recycled ~2^32 times before it
+// could ever collide with this value, vs. just needing 2^32 entities alive at once.
+constexpr Entity NullEntity = std::numeric_limits<Entity>::max();
 
 #include "component_props.h"
 #include "archetype.h"
