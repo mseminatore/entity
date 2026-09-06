@@ -1,3 +1,25 @@
+//------------------------------------------------------
+// Copyright (C) 2026 Mark Seminatore
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is furnished
+// to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//------------------------------------------------------
+
 #pragma once
 
 #include <cstddef>
@@ -5,9 +27,10 @@
 #include <unordered_map>
 #include <memory>
 
-//-----------------------------------------------------------------------------------------------------------
-// storage for a single component type, which is a vector of component data for each entity in the archetype
-//-----------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// Storage for a single component type, which is a vector of component data for
+// each entity in the archetype
+//-----------------------------------------------------------------------------
 class Column
 {
 private:
@@ -19,7 +42,7 @@ private:
 	std::size_t capacity = 0;						// size of component array
 	const ComponentOps* ops = nullptr;
 
-	// grow storage by GrowthFactor
+	// Grow storage by GrowthFactor
 	void grow() {
 		std::size_t new_capacity = capacity == 0 ? MinCapacity : capacity * GrowthFactor;
 		auto* new_data = static_cast<std::byte*>(::operator new(new_capacity * ops->size, std::align_val_t{ ops->alignment }));
@@ -34,13 +57,13 @@ private:
 		capacity	= new_capacity;
 	}
 
-	// release the memory block
+	// Release the memory block
 	void releaseBuffer() noexcept {
 		if (data)
 			::operator delete(data, std::align_val_t{ ops->alignment });
 	}
 
-	// destroy each object before releasing the memory block. Assumes component
+	// Destroy each object before releasing the memory block. Assumes component
 	// destructors do not throw, matching the standard convention for destructors.
 	void release() noexcept {
 		if (data) {
@@ -57,15 +80,16 @@ private:
 	}
 
 public:
+	// Constructor
 	Column(const ComponentOps* ops) noexcept : ops(ops) {}
-
-	// copy ctor
+	
+	// Copy constructor
 	Column(const Column&) = delete;
 
-	// disallow copy assignment
+	// Disallow copy assignment
 	Column& operator=(const Column&) = delete;
 
-	// move ctor
+	// Move constructor
 	Column(Column&& other) noexcept
 		: data(other.data), count(other.count), capacity(other.capacity), ops(other.ops) {
 		other.data = nullptr;
@@ -73,7 +97,7 @@ public:
 		other.capacity = 0;
 	}
 
-	// move assignment
+	// Move assignment
 	Column& operator=(Column&& other) noexcept {
 		if (this != &other) {
 			release();
@@ -89,13 +113,19 @@ public:
 		return *this;
 	}
 
+	// Destructor for the Column class, releases all allocated resources
 	~Column() { release(); }
 
+	// Get the number of components currently stored in the column
 	std::size_t size() const noexcept { return count; }
+
+	// Get the ComponentOps associated with this column
 	const ComponentOps* getOps() const noexcept { return ops; }
 
+	// Get a pointer to the component at the specified row
 	void* at(std::size_t row) noexcept { return data + row * ops->size; }
 
+	// Add a new uninitialized component to the column and return a pointer to it
 	void* pushUninitialized() {
 		// grow if we are full
 		if (count == capacity)
@@ -104,11 +134,12 @@ public:
 		return data + (count++) * ops->size;
 	}
 
-	// assumes the component's destructor does not throw
+	// Assumes the component's destructor does not throw
 	void destroyAt(std::size_t row) noexcept {
 		ops->destroy(at(row));
 	}
 
+	// Move the last row into the specified row and decrease the row count
 	void moveLastInto(std::size_t row) {
 		std::size_t last_row = count - 1;
 
@@ -122,9 +153,10 @@ public:
 
 using ComponentId = std::size_t;	// unique identifier for a component type
 
-//--------------------------------------------------------------------------------------------
-// storage for a collection of columns, representing a unique combination of component types
-//--------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// Storage for a collection of columns, representing a unique combination of 
+// component types
+//-----------------------------------------------------------------------------
 class Archetype
 {
 private:
@@ -133,9 +165,13 @@ private:
 	std::vector<Entity> entities;				// list of entities in this archetype
 
 public:
+	// Bad form, but necessary for quickly navigating between archetypes when
+	// adding or removing components
 	std::unordered_map<ComponentId, Archetype*> addEdge;
 	std::unordered_map<ComponentId, Archetype*> removeEdge;
 
+	// Constructor for the Archetype class, initializes the component types and 
+	// columns based on the provided component operations
 	Archetype(std::vector<ComponentId> ids, const std::vector<const ComponentOps*>& ops) {
 		componentTypes = std::move(ids);
 		
@@ -147,12 +183,16 @@ public:
 		}
 	}
 
+	// Get the number of entities currently stored in the archetype
 	std::size_t size() const noexcept { return entities.size(); }
+
+	// Get the list of component type IDs for this archetype
 	const std::vector<ComponentId>& type_ids() const noexcept { return componentTypes; }
 
-	// reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
+	// Reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
 	void reserve(std::size_t n) { entities.reserve(n); }
 
+	// Get the index of the column corresponding to the specified component ID, or -1 if not found
 	int columnIndexOf(ComponentId id) const noexcept {
 		for (std::size_t i = 0; i < componentTypes.size(); ++i) {
 			if (componentTypes[i] == id) {
@@ -160,11 +200,13 @@ public:
 			}
 		}
 
-		return -1; // not found
+		return -1; // not found, maybe switch to std::optional?
 	}
 
+	// Check if the archetype contains the specified component ID
 	bool contains(ComponentId id) const noexcept { return std::find(componentTypes.begin(), componentTypes.end(), id) != componentTypes.end(); }
 
+	// Check if the archetype contains all of the specified component IDs
 	bool containsAll(const std::vector<ComponentId>& ids) const noexcept {
 		for (ComponentId id : ids) {
 			if (!contains(id)) {
@@ -174,10 +216,13 @@ public:
 		return true;
 	}
 
+	// Get the column at the specified index
 	Column& column(std::size_t index) noexcept { return columns[index]; }
 
+	// Get the number of columns in the archetype
 	std::size_t columnCount() const noexcept { return columns.size(); }
 
+	// Add a new entity with uninitialized components to the archetype and return its row index
 	std::size_t pushUninitializedRow(Entity entity) {
 
 		// add a new entity with empty components to the archetype and return its row index
@@ -190,7 +235,7 @@ public:
 		return entities.size() - 1;
 	}
 
-	// destroy the components of the entity at the specified row and remove it from the archetype
+	// Destroy the components of the entity at the specified row and remove it from the archetype
 	Entity removeRow(std::size_t row) {
 		for (auto &col : columns) {
 			col.destroyAt(row);
@@ -199,7 +244,7 @@ public:
 		return finishRemovingRow(row);
 	}
 
-	// move the last entity into the specified row and return the moved entity, or NullEntity if the removed row was the last row
+	// Move the last entity into the specified row and return the moved entity, or NullEntity if the removed row was the last row
 	Entity finishRemovingRow(std::size_t row) {
 		std::size_t last = entities.size() - 1;
 		for (auto& col : columns) col.moveLastInto(row);
@@ -214,12 +259,17 @@ public:
 		return moved;
 	}
 
+	// Get the entity at the specified row
 	Entity entityAt(std::size_t row) const noexcept { return entities[row]; }
+
+	// Get the list of all entities in the archetype
 	const std::vector<Entity>& entityList() const noexcept { return entities; }
 };
 
+// An ascending list of component IDs representing an archetype's signature
 using Signature = std::vector<ComponentId>;
 
+// Hash function for signatures, used in the unordered_map of archetypes by signature
 struct SignatureHash {
 	std::size_t operator()(const Signature& sig) const noexcept {
 		std::size_t h = sig.size();
@@ -240,17 +290,17 @@ private:
 	Archetype *emptyArchetype = nullptr;					// archetype with no components, used for new entities
 	std::vector<std::unique_ptr<Archetype>> archetypes;		// a list of existing Archetypes
 
-	// 
+	// Map from archetype signatures to their corresponding Archetype pointers
 	std::unordered_map<Signature, Archetype*, SignatureHash> signatures;
 
-	// find or create an Archetype having the given signature. Set the ops if creating a new one
+	// Find or create an Archetype having the given signature. Set the ops if creating a new one
 	Archetype& get_or_create(const Signature& sig, const std::vector<const ComponentOps*>& ops) {
 		auto it = signatures.find(sig);
 		if (it != signatures.end()) return *it->second;
 		return create(sig, ops);
 	}
 
-	// create and return a new Archetype having the given signature and ops
+	// Create and return a new Archetype having the given signature and ops
 	Archetype& create(Signature sig, const std::vector<const ComponentOps*>& ops) {
 		auto archetype = std::make_unique<Archetype>(sig, ops);
 		Archetype* raw = archetype.get();
@@ -260,10 +310,12 @@ private:
 	}
 
 public:
+	// Constructor initializes an empty archetype
 	ArchetypeRegistry() {
 		emptyArchetype = &create({}, {});
 	}
 
+	// Get the empty archetype (with no components)
 	Archetype& empty() noexcept { return *emptyArchetype; }
 
 	// Returns the archetype for the given signature, creating it if necessary. Unlike
@@ -327,6 +379,6 @@ public:
 		return to;
 	}
 
-	// return all existing archetypes
+	// Return all existing archetypes
 	const std::vector<std::unique_ptr<Archetype>>& all() const noexcept { return archetypes; }
 };

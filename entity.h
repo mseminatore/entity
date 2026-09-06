@@ -1,3 +1,25 @@
+//------------------------------------------------------
+// Copyright (C) 2026 Mark Seminatore
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is furnished
+// to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//------------------------------------------------------
+
 #pragma once
 
 #include <algorithm>
@@ -12,7 +34,7 @@
 #include <type_traits>
 #include <utility>
 
-// Enforces an assert unconditionally, independent of NDEBUG. Violating this assertion
+// Provide an assert unconditionally, independent of NDEBUG. Violating this assertion
 // is a calling contract violation not a runtime error to handle and recover. So
 // the only thing this needs to do is provide a debuggable abort instead of letting
 // a stripped-out assert() let the violation through as undefined behavior in a Release build.
@@ -24,6 +46,7 @@
 		} \
 	} while (0)
 
+// Entity handle type and null entity constant
 using Entity = std::uint64_t;
 
 // A null entity handle, representing an invalid or non-existent entity. Deliberately all bits
@@ -35,11 +58,16 @@ constexpr Entity NullEntity = std::numeric_limits<Entity>::max();
 #include "component_props.h"
 #include "archetype.h"
 
-using EntityIndex		= std::uint32_t;
-using EntityGeneration	= std::uint32_t;
+using EntityIndex		= std::uint32_t;	// Type for entity index within the entity handle
+using EntityGeneration	= std::uint32_t;	// Type for entity generation within the entity handle
 
+// Extract the entity index from the entity handle
 inline EntityIndex entityIndex(Entity entity) noexcept				{ return static_cast<EntityIndex>(entity & 0xFFFFFFFF); }
+
+// Extract the entity generation from the entity handle
 inline EntityGeneration entityGeneration(Entity entity) noexcept	{ return static_cast<EntityGeneration>(entity >> 32); }
+
+// Create an entity handle from the given index and generation
 inline Entity makeEntity(EntityIndex index, EntityGeneration generation) noexcept { return (static_cast<Entity>(generation) << 32) | index; }
 
 //-----------------------------------------------------------------------------------------
@@ -64,7 +92,7 @@ private:
 	std::size_t liveCount = 0;					// number of currently alive entities
 
 public:
-	// create an entity with the given archetype and add it to the table
+	// Create an entity with the given archetype and add it to the table
 	Entity create(Archetype* archetype, std::size_t row) {
 		EntityIndex index;
 
@@ -86,12 +114,13 @@ public:
 		return entity;
 	}
 
-	// number of currently alive entities
+	// Number of currently alive entities
 	std::size_t size() const noexcept { return liveCount; }
 
-	// reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
+	// Reserve capacity for at least `n` entities, to avoid vector growth when bulk-creating
 	void reserve(std::size_t n) { entityDataTable.reserve(n); }
 
+	// Check if an entity is alive
 	bool isAlive(Entity entity) const noexcept {
 		EntityIndex index = entityIndex(entity);	// get the index from the entity handle
 
@@ -103,7 +132,7 @@ public:
 		return entityDataTable[index].isAlive && entityGeneration(entity) == entityDataTable[index].generation;
 	}
 
-	// const-qualified for a const EntityTable, non-const otherwise (deduced from self)
+	// Const-qualified for a const EntityTable, non-const otherwise (deduced from self)
 	template <typename Self>
 	auto& record(this Self& self, Entity entity) noexcept {
 		ENTITY_ASSERT(self.isAlive(entity));	// ensure the entity is alive before accessing its record
@@ -112,7 +141,7 @@ public:
 		return self.entityDataTable[index];
 	}
 
-	// non-asserting counterpart of record(): returns nullptr instead of failing a precondition
+	// Non-asserting counterpart of record(): returns nullptr instead of failing a precondition
 	// when the entity is dead or out of range, doing the liveness check exactly once
 	EntityData* tryRecord(Entity entity) noexcept {
 		EntityIndex index = entityIndex(entity);
@@ -127,13 +156,15 @@ public:
 		return &data;
 	}
 
+	// Set the location of an entity within its archetype and row index
 	void setLocation(Entity entity, Archetype* archetype, std::size_t row) noexcept {
 		EntityIndex index = entityIndex(entity);
 		entityDataTable[index].archetype = archetype;
 		entityDataTable[index].rowIndex = row;
 	}
 
-	// Update the row index of an entity in the entity data table
+	// Update the row index of an entity in the entity data table. This is 
+	// useful when an entity moves within its archetype.
 	void updateRow(Entity entity, std::size_t newRow) noexcept {
 		record(entity).rowIndex = newRow;
 	}
@@ -272,6 +303,7 @@ private:
 	}
 
 public:
+	// Create a new entity in the empty archetype and return its handle
     Entity create() {
 		Archetype &empty = archetypeRegistry.empty();		// initial archetype for new entities
 		Entity e = entityTable.create(&empty, 0);			// create a new entity in the entity table
@@ -351,12 +383,13 @@ public:
 		entityTable.destroy(entity);
 	}
 
+	// Check if an entity is alive
 	bool isAlive(Entity entity) const noexcept { return entityTable.isAlive(entity); }
 
-	// number of currently alive entities
+	// Number of currently alive entities
 	std::size_t size() const noexcept { return entityTable.size(); }
 
-	// add a component of type T to an entity, moving it to a new archetype if necessary
+	// Add a component of type T to an entity, moving it to a new archetype if necessary
 	template <typename T, typename... Args>
 	T& add(Entity e, Args&&... args) {
 		ENTITY_ASSERT(isAlive(e));
@@ -390,7 +423,7 @@ public:
 		return *value;
 	}
 
-	// remove a component of type T from an entity
+	// Remove a component of type T from an entity
 	template <typename T>
 	void remove(Entity e) {
 		ENTITY_ASSERT(isAlive(e));
@@ -420,8 +453,8 @@ public:
 		entityTable.setLocation(e, &new_archetype, new_row);
 	}
 
-	// returns the component if the entity has it, or std::nullopt otherwise;
-	// a single deducing-this template covers both the const and non-const case
+	// Returns the component if the entity has it, or std::nullopt otherwise.
+	// A single deducing-this template covers both the const and non-const case
 	template <typename T, typename Self>
 	std::optional<std::reference_wrapper<std::conditional_t<std::is_const_v<Self>, const T, T>>>
 	get(this Self& self, Entity e) noexcept {
@@ -438,7 +471,7 @@ public:
 		return std::ref(*static_cast<ComponentT*>(rec.archetype->column(idx).at(rec.rowIndex)));
 	}
 
-	// return true if entity has a given component
+	// Return true if entity has a given component
 	template <typename T>
 	bool has(Entity e) noexcept {
 		ENTITY_ASSERT(isAlive(e));
@@ -447,7 +480,7 @@ public:
 		return rec.archetype->contains(ComponentType::get<T>());
 	}
 
-	// get an iterable view of entities having the requested set of components
+	// Get an iterable view of entities having the requested set of components
 	template <typename... Components>
 	EntityView<Components...> view() noexcept {
 		return EntityView<Components...>(archetypeRegistry, entityTable);
