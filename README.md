@@ -2,31 +2,24 @@
 
 [![CMake](https://github.com/mseminatore/entity/actions/workflows/cmake.yml/badge.svg)](https://github.com/mseminatore/entity/actions/workflows/cmake.yml)
 
-A small, header-only, Archetype-based Entity Component System (ECS) for C++23.
+This lbirary is a small, header-only, Archetype-based Entity Component System (ECS) written using C++23.
 
 `Entities` are cheap, generation-checked handles. `Components` are plain structs with no base
-class. `Entities` are grouped into archetypes by their exact set of component types, so 
-components of the same type are stored contiguously in memory. `Systems` are iterations over a 
-query/view only touches matching archetypes.
+class. `Entities` are grouped into archetypes by their exact set of component types, so components of the same type are stored contiguously in memory for max cache
+utilization. `Systems` are functions that iterate over a query/view that only touches matching archetypes.
 
-## Features
+## Key Features
 
 - Header-only: `include/entity.h`
 - Type-erased, archetype-based storage — no inheritance or virtual dispatch on components
 - Automatic archetype interning: the same final component set always maps to the same
-  archetype, regardless of the order components were added in
+  archetype, regardless of the order components were added
 - Cached archetype transitions for repeated `add`/`remove` calls
-- Generation-checked entity handles — a stale handle safely fails `isAlive()` even after
-  its index is recycled
+- Generation-checked entity handles — a stale handle safely fails `isAlive()` even after its index is recycled
 - Simple query API (`view<Components...>()`) supporting both
-  `func(Components&...)` and `func(Entity, Components&...)` callback shapes, plus
+  `func(Components&...)` and `func(Entity, Components&...)` callback versions, plus
   `.exclude<Excluded...>()` filtering
-- Safe to `add`/`remove`/`destroy` entities from inside a `for_each` callback — an entity
-  destroyed or migrated out mid-iteration by an earlier callback is skipped safely rather
-  than read after it's invalid
-- Precondition contracts (e.g. `add<T>` on an already-present component, an operation on a
-  dead entity) are enforced unconditionally via `ENTITY_ASSERT`, independent of `NDEBUG` —
-  a Release build still traps a violation with a clean abort instead of undefined behavior
+- It is safe to `add`/`remove`/`destroy` entities from inside a `for_each` callback. An entity destroyed or migrated mid-iteration by an earlier callback is skipped rather than read after it's invalidated.
 
 ## Minimum Requirements
 
@@ -35,8 +28,7 @@ query/view only touches matching archetypes.
 
 ## Getting started
 
-This repository uses the [`testy`](https://github.com/mseminatore/testy) test framework as
-a git submodule, so clone with `--recursive` (or init it afterward):
+This repository uses the [`testy`](https://github.com/mseminatore/testy) test framework as a git submodule, so clone with `--recursive` (or init it afterward):
 
 ```sh
 git clone --recursive <this-repo-url>
