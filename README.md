@@ -2,16 +2,16 @@
 
 [![CMake](https://github.com/mseminatore/entity/actions/workflows/cmake.yml/badge.svg)](https://github.com/mseminatore/entity/actions/workflows/cmake.yml)
 
-A small, header-only, archetype-based Entity Component System (ECS) for C++23.
+A small, header-only, Archetype-based Entity Component System (ECS) for C++23.
 
-Entities are cheap, generation-checked handles. Components are plain structs with no base
-class. Entities are grouped into archetypes by their exact set of component types, so 
-components of the same type are stored contiguously in memory and iteration over a 
+`Entities` are cheap, generation-checked handles. `Components` are plain structs with no base
+class. `Entities` are grouped into archetypes by their exact set of component types, so 
+components of the same type are stored contiguously in memory. `Systems` are iterations over a 
 query/view only touches matching archetypes.
 
 ## Features
 
-- Header-only: `entity.h`
+- Header-only: `include/entity.h`
 - Type-erased, archetype-based storage — no inheritance or virtual dispatch on components
 - Automatic archetype interning: the same final component set always maps to the same
   archetype, regardless of the order components were added in
@@ -57,7 +57,7 @@ benchmark binary under `build/benchmarks`.
 ## Basic Usage
 
 ```cpp
-#include "entity.h"
+#include "entity.h" // in include/
 
 // define some Components
 struct Position { float x, y; };
@@ -91,7 +91,7 @@ entityManager.remove<Velocity>(e);
 entityManager.destroy(e);
 ```
 
-See `main.cpp` for a more complete example (a small game loop with movement and collision systems).
+See `examples/main.cpp` for a more complete example (a small game loop with movement and collision systems).
 
 ## Unit Testing
 
@@ -120,7 +120,7 @@ A micro benchmark suite lives under `benchmarks/`, covering entity create/destro
 component add/remove migration chains, random component access, and `view().for_each()`
 iteration (including a fragmented-across-many-archetypes case and a collision-shaped
 nested-view case). It's a manually-run dev tool for measuring the cost of local changes to
-`entity.h`/`archetype.h` — it isn't registered with CTest, since timing isn't a pass/fail
+`include/entity.h`/`include/archetype.h` — it isn't registered with CTest, since timing isn't a pass/fail
 criteria.
 
 The `entity_bench` target always builds with `-O2`/`/O2` regardless of the top-level

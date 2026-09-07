@@ -15,7 +15,7 @@ if (MSVC)
 endif()
 
 add_executable(entity_bench entity_bench.cpp)
-target_include_directories(entity_bench PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(entity_bench PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/examples)
 target_compile_features(entity_bench PRIVATE cxx_std_23)
 target_compile_options(entity_bench PRIVATE ${ENTITY_WARNING_FLAGS})
 

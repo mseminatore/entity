@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
 {
 	EntityManager entityManager;
 
-	const char* entityFile = argc > 1 ? argv[1] : "entities.txt";
+	const char* entityFile = argc > 1 ? argv[1] : "examples/entities.txt";
 	initializeGame(entityManager, entityFile);
 
 	gameLoop(entityManager);

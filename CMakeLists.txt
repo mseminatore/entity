@@ -15,7 +15,8 @@ endif()
 #
 # add the executable(s)
 #
-add_executable(entity main.cpp)
+add_executable(entity examples/main.cpp)
+target_include_directories(entity PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/examples)
 target_compile_features(entity PRIVATE cxx_std_23)
 target_compile_options(entity PRIVATE ${ENTITY_WARNING_FLAGS})
 

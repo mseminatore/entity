@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A from-scratch, header-only archetype-based Entity Component System (ECS) in C++20. The library is `entity.h` + `archetype.h` + `component_props.h`. `components.h` (example component structs) and `main.cpp` (a demo game loop) are a *consumer* of the library, not part of it.
+A from-scratch, header-only archetype-based Entity Component System (ECS) in C++20. The library is `include/entity.h` + `include/archetype.h` + `include/component_props.h`. `examples/components.h` (example component structs) and `examples/main.cpp` (a demo game loop) are a *consumer* of the library, not part of it.
 
 ## Build & test
 
@@ -28,23 +28,23 @@ Run a test binary directly for colored per-case output (not just pass/fail):
 
 `testy` (the test framework) is a git submodule — if missing after a fresh clone: `git submodule update --init --recursive`.
 
-No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized by default. Library preconditions (see below) are enforced via the `ENTITY_ASSERT` macro (`entity.h`), not bare `assert()` — it checks unconditionally regardless of `NDEBUG`/build type, specifically so a Release build (CI builds both Debug and Release) doesn't silently strip the checks and turn a precondition violation into undefined behavior.
+No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized by default. Library preconditions (see below) are enforced via the `ENTITY_ASSERT` macro (`include/entity.h`), not bare `assert()` — it checks unconditionally regardless of `NDEBUG`/build type, specifically so a Release build (CI builds both Debug and Release) doesn't silently strip the checks and turn a precondition violation into undefined behavior.
 
 `entity`, `entity_tests`, and `entity_stress_tests` (but not the `testy` submodule) build with `-Wall -Wextra -Werror` (`/W4 /WX` on MSVC) — any new warning fails the build. CI (`.github/workflows/cmake.yml`) builds Debug and Release on both Ubuntu and macOS.
 
-`./build/entity` runs the demo game loop (`main.cpp`); it reads stdin one char per frame and quits on `q`.
+`./build/entity` runs the demo game loop (`examples/main.cpp`); it reads stdin one char per frame and quits on `q`. It loads `examples/entities.txt` by default (or a path given as `argv[1]`), so run it from the repo root.
 
 ## Architecture
 
-**Entity handle.** `Entity` is a packed `uint64_t`: high 32 bits = generation, low 32 bits = index (`entityIndex()` / `entityGeneration()` in `entity.h`). `EntityTable::destroy()` doesn't shrink storage — it frees the index onto a reuse list and bumps that slot's generation, so a stale handle captured before `destroy()` fails `isAlive()`'s generation check even after the index is recycled by a later `create()`.
+**Entity handle.** `Entity` is a packed `uint64_t`: high 32 bits = generation, low 32 bits = index (`entityIndex()` / `entityGeneration()` in `include/entity.h`). `EntityTable::destroy()` doesn't shrink storage — it frees the index onto a reuse list and bumps that slot's generation, so a stale handle captured before `destroy()` fails `isAlive()`'s generation check even after the index is recycled by a later `create()`.
 
-**Archetype storage.** Every unique *sorted* set of component types is one `Archetype` (`archetype.h`), holding one `Column` per component type — contiguous, type-erased storage (raw `std::byte*` buffer, placement-new / `operator delete` with alignment) driven by function-pointer `ComponentOps` (`component_props.h`: move-construct + destroy + size + alignment), so a `Column` never needs to know its component type at compile time. This is what lets a component like `Name` (holding a `std::string`) migrate between archetypes correctly.
+**Archetype storage.** Every unique *sorted* set of component types is one `Archetype` (`include/archetype.h`), holding one `Column` per component type — contiguous, type-erased storage (raw `std::byte*` buffer, placement-new / `operator delete` with alignment) driven by function-pointer `ComponentOps` (`include/component_props.h`: move-construct + destroy + size + alignment), so a `Column` never needs to know its component type at compile time. This is what lets a component like `Name` (holding a `std::string`) migrate between archetypes correctly.
 
 `ArchetypeRegistry` interns archetypes by canonical `Signature` (sorted `vector<ComponentId>`), so the same final component set always resolves to the same `Archetype` regardless of the order components were added in. Each `Archetype` also caches its `addEdge`/`removeEdge` transitions to sibling archetypes for O(1) repeated `add<T>`/`remove<T>` calls.
 
 **`add<T>`/`remove<T>` = full archetype migration**: move-construct every existing component from the old archetype's row into the new archetype's row, placement-new the added component (or skip it for a removal), swap-remove the now-vacated row (`Archetype::finishRemovingRow`), and patch `EntityTable`'s row index for whichever entity got swapped into that slot.
 
-**`create<Components...>` = single-shot construction, no migration.** Unlike `create()` followed by chained `add<T>()` calls, `EntityManager::create<Components...>(components...)` resolves the entity's final archetype up front — via `ArchetypeRegistry::forSignature`, which requires an already-canonical (sorted, duplicate-free) signature, the same order `addTarget`/`removeTarget` chains always produce — and placement-constructs every component directly into it; no intermediate archetype is ever visited. Each `EntityManager` caches the resolved `Archetype*` per distinct `create<Components...>()` instantiation in a per-instance `vector<Archetype*>` indexed by `ComponentSetType::get<Components...>()` (`component_props.h`), so repeated spawns of the same shape are O(1) after the first call — no signature rebuild, no hash lookup. That cache is deliberately keyed per-`EntityManager`-instance, not by a shared `static` keyed on `this`: a destroyed stack-allocated `EntityManager` can have its memory reused by a new instance at the same address, which would make an identity-keyed cache hand back a dangling `Archetype*` from the old registry.
+**`create<Components...>` = single-shot construction, no migration.** Unlike `create()` followed by chained `add<T>()` calls, `EntityManager::create<Components...>(components...)` resolves the entity's final archetype up front — via `ArchetypeRegistry::forSignature`, which requires an already-canonical (sorted, duplicate-free) signature, the same order `addTarget`/`removeTarget` chains always produce — and placement-constructs every component directly into it; no intermediate archetype is ever visited. Each `EntityManager` caches the resolved `Archetype*` per distinct `create<Components...>()` instantiation in a per-instance `vector<Archetype*>` indexed by `ComponentSetType::get<Components...>()` (`include/component_props.h`), so repeated spawns of the same shape are O(1) after the first call — no signature rebuild, no hash lookup. That cache is deliberately keyed per-`EntityManager`-instance, not by a shared `static` keyed on `this`: a destroyed stack-allocated `EntityManager` can have its memory reused by a new instance at the same address, which would make an identity-keyed cache hand back a dangling `Archetype*` from the old registry.
 
 **`reserve(n)`** pre-sizes `EntityTable`'s table and the empty archetype's entity list for `n` upcoming `create()` calls, avoiding the vector-growth cost that otherwise dominates bulk entity creation. It only covers the empty archetype, since every new entity starts there regardless of which `create()` overload is used.
 
@@ -52,9 +52,9 @@ No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized by default. Library prec
 
 **Queries.** `EntityManager::view<Components...>()` matches any archetype that *contains* all requested component ids — extra, unrelated components on a matching entity don't exclude it (it's not an exact-signature match). `EntityView::for_each` accepts either `func(Components&...)` or `func(Entity, Components&...)`, disambiguated via SFINAE on both `invoke` overloads — a lambda with a mismatched arity is a compile error, not a silent misdispatch. `view<>()` with zero template args is a valid (if non-obvious/undocumented) way to visit every live entity across every archetype.
 
-**No thread safety** anywhere (shared vectors in `EntityTable` / `ArchetypeRegistry`, function-local-static component IDs in `ComponentType`) — single-threaded use only, matching `main.cpp`'s single-threaded game loop.
+**No thread safety** anywhere (shared vectors in `EntityTable` / `ArchetypeRegistry`, function-local-static component IDs in `ComponentType`) — single-threaded use only, matching `examples/main.cpp`'s single-threaded game loop.
 
-**Header include order matters.** `entity.h` is the only intended entry point: it defines `Entity`/`NullEntity` first, then includes `component_props.h` then `archetype.h`, both of which assume those symbols already exist. Don't include `archetype.h` or `component_props.h` directly.
+**Header include order matters.** `include/entity.h` is the only intended entry point: it defines `Entity`/`NullEntity` first, then includes `component_props.h` then `archetype.h`, both of which assume those symbols already exist. Don't include `archetype.h` or `component_props.h` directly.
 
 ## Test suite structure
 
@@ -73,3 +73,9 @@ New tests follow the same pattern: add a `static bool test_xxx()` and one `TESTE
 ```
 
 When adding or comparing benchmarks, the two sides of a comparison must do equal per-entity work. The fragmented-vs-single-archetype comparison originally looked like archetype fragmentation was free (or even beneficial) purely because the two benchmark bodies touched a different number of components — fixed by making both touch the same ones. Get the op-for-op comparison right before trusting a ns/op delta.
+
+## Directory layout
+
+- `include/` — the library: `entity.h`, `archetype.h`, `component_props.h`. Nothing outside this directory is part of the public API.
+- `examples/` — a *consumer* of the library: `main.cpp` (demo game loop), `components.h` (example component structs, also reused by `tests/` and `benchmarks/` as shared test fixtures), `entities.txt` (demo data file).
+- `tests/`, `benchmarks/` — as described above; both include from `include/` and `examples/`.
