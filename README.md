@@ -108,16 +108,13 @@ Each test binary can be run directly for detailed, syntax-colored, test-case out
 
 ## Benchmarks
 
-A micro benchmark suite lives under `benchmarks/`, covering entity create/destroy,
+A micro benchmark lives under `benchmarks/`, covering entity create/destroy,
 component add/remove migration chains, random component access, and `view().for_each()`
-iteration (including a fragmented-across-many-archetypes case and a collision-shaped
-nested-view case). It's a manually-run dev tool for measuring the cost of local changes to
-`include/entity.h`/`include/archetype.h` — it isn't registered with CTest, since timing isn't a pass/fail
-criteria.
+iteration. It's a manually run tool for measuring the cost of local changes to
+`include/entity.h`/`include/archetype.h`. It doesn't run by default with CTest, because timing isn't a regular pass/fail criteria.
 
 The `entity_bench` target always builds with `-O2`/`/O2` regardless of the top-level
-configure (no `CMAKE_BUILD_TYPE` is set by default, so an unoptimized build would give
-meaningless numbers):
+configure (no `CMAKE_BUILD_TYPE` is set by default, so an unoptimized build would give meaningless numbers):
 
 ```sh
 ./build/benchmarks/entity_bench
