@@ -87,9 +87,9 @@ See `examples/main.cpp` for a more complete example (a small game loop with move
 
 ## Unit Testing
 
-Tests are run using CTest, for local and CI testing, and are split into two targets:
+Tests are run using CTest for local and CI testing. There are two targets:
 
-- `entity_tests` — fast, correctness suite
+- `entity_tests` — fast, basic correctness tests
 - `entity_stress_tests` — larger-scale/randomized tests, tagged with the CTest label `stress`
 
 ```sh
@@ -99,7 +99,7 @@ ctest -LE stress                # fast suite only
 ctest -L stress                 # stress suite only
 ```
 
-Each test binary can be run directly for detailed, syntax-colored, test-case output:
+Each test binary can be run directly for detailed test-case output:
 
 ```sh
 ./build/tests/entity_tests
