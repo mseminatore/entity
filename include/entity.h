@@ -208,6 +208,36 @@ private:
 		func(archetype.entityAt(row), *static_cast<Components*>(archetype.column(column_index[I]).at(row))...);
 	}
 
+	// Lambda accepts (std::size_t count, Components*...): one call per archetype, with each
+	// component's column base pointer
+	template <typename Func, std::size_t N, std::size_t... I>
+	static void invokeChunk(Func& func, Archetype& archetype, const std::array<int, N>& column_index,
+		std::index_sequence<I...>)
+	{
+		func(archetype.size(), static_cast<Components*>(archetype.column(column_index[I]).at(0))...);
+	}
+
+	// True if archetype contains every requested component and none of the excluded ones;
+	// fills column_index with each requested component's column in that archetype
+	template <std::size_t N>
+	bool matches(Archetype& archetype, const std::array<ComponentId, N>& wanted, std::array<int, N>& column_index) const {
+		for (std::size_t i = 0; i < N; ++i) {
+			int idx = archetype.columnIndexOf(wanted[i]);
+
+			if (idx < 0)
+				return false;
+
+			column_index[i] = idx;
+		}
+
+		for (ComponentId excluded_id : excluded) {
+			if (archetype.contains(excluded_id))
+				return false;
+		}
+
+		return true;
+	}
+
 public:
 	explicit EntityView(ArchetypeRegistry& registry, EntityTable& entityTable) noexcept
 		: registry(&registry), entityTable(&entityTable) {}
@@ -238,29 +268,8 @@ public:
 		for (std::size_t ai = 0; ai < archetypeCount; ++ai) {
 			Archetype& archetype = *registry->all()[ai];
 			std::array<int, n> column_index{};
-			bool matches = true;
 
-			for (std::size_t i = 0; i < n; ++i) {
-				int idx = archetype.columnIndexOf(wanted[i]);
-
-				if (idx < 0) {
-					matches = false;
-					break;
-				}
-
-				column_index[i] = idx;
-			}
-
-			if (matches) {
-				for (ComponentId excluded_id : excluded) {
-					if (archetype.contains(excluded_id)) {
-						matches = false;
-						break;
-					}
-				}
-			}
-
-			if (!matches)
+			if (!matches(archetype, wanted, column_index))
 				continue;
 
 			// snapshot this archetype's entities before invoking any callback for it, since
@@ -275,6 +284,27 @@ public:
 
 				invoke(func, archetype, column_index, rec->rowIndex, std::index_sequence_for<Components...>{});
 			}
+		}
+	}
+
+	// Fast-path iteration: invoke func(std::size_t count, Components*...) once per matching,
+	// non-empty archetype, passing each requested component's contiguous column (count elements
+	// each, row i of every column belongs to the same entity). Unlike for_each there's no
+	// per-entity snapshot or liveness check, so func must not create/destroy entities or
+	// add/remove components -- any structural change invalidates the column pointers.
+	template <typename Func>
+	void for_each_chunk(Func&& func) {
+		constexpr std::size_t n = sizeof...(Components);
+		std::array<ComponentId, n> wanted{ ComponentType::get<Components>()... };
+
+		for (const auto& archetype_ptr : registry->all()) {
+			Archetype& archetype = *archetype_ptr;
+			std::array<int, n> column_index{};
+
+			if (archetype.size() == 0 || !matches(archetype, wanted, column_index))
+				continue;
+
+			invokeChunk(func, archetype, column_index, std::index_sequence_for<Components...>{});
 		}
 	}
 };

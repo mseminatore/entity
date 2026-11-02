@@ -52,6 +52,8 @@ No `CMAKE_BUILD_TYPE` is set, so builds are unoptimized by default. Library prec
 
 **Queries.** `EntityManager::view<Components...>()` matches any archetype that *contains* all requested component ids — extra, unrelated components on a matching entity don't exclude it (it's not an exact-signature match). `EntityView::for_each` accepts either `func(Components&...)` or `func(Entity, Components&...)`, disambiguated via SFINAE on both `invoke` overloads — a lambda with a mismatched arity is a compile error, not a silent misdispatch. `view<>()` with zero template args is a valid (if non-obvious/undocumented) way to visit every live entity across every archetype.
 
+`EntityView::for_each_chunk` is the fast path: it calls `func(std::size_t count, Components*...)` once per matching *non-empty* archetype with each column's base pointer (row `i` of every column is the same entity). It skips `for_each`'s per-call entity-list snapshot and per-entity `tryRecord()` liveness check, so structural changes (create/destroy/add/remove) inside the callback are a contract violation: they can reallocate or swap-remove columns out from under the pointers. Both methods share the private `matches()` helper for archetype/exclude matching.
+
 **No thread safety** anywhere (shared vectors in `EntityTable` / `ArchetypeRegistry`, function-local-static component IDs in `ComponentType`) — single-threaded use only, matching `examples/main.cpp`'s single-threaded game loop.
 
 **Header include order matters.** `include/entity.h` is the only intended entry point: it defines `Entity`/`NullEntity` first, then includes `component_props.h` then `archetype.h`, both of which assume those symbols already exist. Don't include `archetype.h` or `component_props.h` directly.
