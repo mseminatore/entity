@@ -764,6 +764,62 @@ static bool test_view_exclude_filters_matching_archetypes() {
 }
 
 //------------------------------------------------------
+// Chunk iteration: for_each_chunk
+//------------------------------------------------------
+
+// every matching entity is visited exactly once across all matching archetypes, columns are
+// row-aligned, and writes through the column pointers stick
+static bool test_for_each_chunk_visits_every_matching_entity_once() {
+	EntityManager em;
+	std::vector<Entity> movers;
+
+	for (int i = 0; i < 10; ++i)
+		movers.push_back(em.create<Position, Velocity>(Position{ float(i), 0.0f }, Velocity{ 1.0f, float(i) }));
+	for (int i = 10; i < 15; ++i)
+		movers.push_back(em.create<Position, Velocity, Health>(Position{ float(i), 0.0f }, Velocity{ 1.0f, float(i) }, Health{ 1.0f }));
+	for (int i = 0; i < 4; ++i)
+		em.create<Position>(Position{ -1.0f, -1.0f });
+
+	std::size_t visited = 0, chunks = 0;
+	em.view<Position, Velocity>().for_each_chunk([&](std::size_t count, Position* p, Velocity* v) {
+		++chunks;
+		visited += count;
+		for (std::size_t i = 0; i < count; ++i) {
+			p[i].x += v[i].vx;
+			p[i].y += v[i].vy;
+		}
+	});
+
+	bool allMoved = true;
+	for (Entity e : movers) {
+		const Position& p = em.get<Position>(e)->get();
+		allMoved = allMoved && p.x == p.y + 1.0f;	// started at (i, 0) with velocity (1, i) -> (i + 1, i)
+	}
+
+	return chunks == 2 && visited == movers.size() && allMoved;
+}
+
+static bool test_for_each_chunk_respects_exclude_and_skips_empty_archetypes() {
+	EntityManager em;
+	Entity plain = em.create<Position>(Position{ 0.0f, 0.0f });
+	em.create<Position, Velocity>(Position{ 1.0f, 1.0f }, Velocity{ 0.0f, 0.0f });
+
+	// leave an empty-but-matching archetype behind: (Position, Health) with no rows
+	Entity tmp = em.create<Position, Health>(Position{ 2.0f, 2.0f }, Health{ 1.0f });
+	em.destroy(tmp);
+
+	std::size_t chunks = 0, visited = 0;
+	float seenX = -1.0f;
+	em.view<Position>().exclude<Velocity>().for_each_chunk([&](std::size_t count, Position* p) {
+		++chunks;
+		visited += count;
+		seenX = p[0].x;
+	});
+
+	return chunks == 1 && visited == 1 && seenX == 0.0f && em.isAlive(plain);
+}
+
+//------------------------------------------------------
 // Multi-archetype matrix: exercise several simultaneous
 // archetypes at once, stressing columnIndexOf/matching
 // logic beyond the 1-2 archetypes other tests juggle
@@ -995,6 +1051,10 @@ void test_main(int argc, char* argv[]) {
 
 	SUITE("Query filtering: exclude<T...>");
 	TESTEX("exclude<T>() filters out archetypes containing T", test_view_exclude_filters_matching_archetypes());
+
+	SUITE("Chunk iteration: for_each_chunk");
+	TESTEX("for_each_chunk visits every matching entity once, writes stick", test_for_each_chunk_visits_every_matching_entity_once());
+	TESTEX("for_each_chunk respects exclude<T>() and skips empty archetypes", test_for_each_chunk_respects_exclude_and_skips_empty_archetypes());
 
 	SUITE("Multi-archetype matrix");
 	TESTEX("queries return exactly the expected entity set across several archetypes", test_multi_archetype_matrix_queries_return_expected_sets());

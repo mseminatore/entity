@@ -20,6 +20,7 @@ utilization. `Systems` are functions that iterate over a query/view that only to
   `func(Components&...)` and `func(Entity, Components&...)` callback versions, plus
   `.exclude<Excluded...>()` filtering
 - It is safe to `add`/`remove`/`destroy` entities from inside a `for_each` callback. An entity destroyed or migrated mid-iteration by an earlier callback is skipped rather than read after it's invalidated.
+- `for_each_chunk` fast path: one callback per matching archetype with raw, contiguous component columns, for tight cache-friendly loops (no structural changes allowed inside the callback)
 
 ## Minimum Requirements
 
@@ -72,6 +73,15 @@ entityManager.view<Position, Velocity>().for_each([](Position& p, Velocity& v) {
 // ... or exclude entities that also have a given component
 entityManager.view<Position>().exclude<Velocity>().for_each([](Position& p) {
     // only entities with Position and no Velocity
+});
+
+// fast path: one call per matching archetype with its contiguous component columns.
+// Don't create/destroy entities or add/remove components inside the callback.
+entityManager.view<Position, Velocity>().for_each_chunk([](std::size_t count, Position* p, Velocity* v) {
+    for (std::size_t i = 0; i < count; ++i) {
+        p[i].x += v[i].vx;
+        p[i].y += v[i].vy;
+    }
 });
 
 // query for a single entity's component
