@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache Demo Report</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0;
+  --surface-1: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --grid: #e7e6e2;
+  --axis: #c9c8c2;
+  --border: #e1e0db;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --good: #1a7f37;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #96958c;
+    --grid: #2a2a28;
+    --axis: #4a4a46;
+    --border: #2f2f2d;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --good: #4ac26b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #96958c;
+  --grid: #2a2a28;
+  --axis: #4a4a46;
+  --border: #2f2f2d;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --good: #4ac26b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 19px; margin: 44px 0 6px; }
+h3 { font-size: 15px; margin: 0 0 2px; }
+p { margin: 0 0 10px; color: var(--text-secondary); max-width: 72ch; }
+.meta { color: var(--text-muted); font-size: 13px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 24px 0 8px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.tile .k { font-size: 13px; color: var(--text-secondary); }
+.tile .v { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 2px 0; }
+.tile .d { font-size: 13px; color: var(--text-muted); }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 14px 0; }
+.card .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 0 14px; }
+@media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: inherit; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--text-secondary); margin: 2px 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  white-space: nowrap; display: none; z-index: 2; color: var(--text-primary); }
+.tip .h { font-weight: 600; margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.tip .r i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.tip .r b { font-weight: 500; margin-left: auto; padding-left: 12px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; font-size: 13px; color: var(--text-secondary); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 13px; padding: 5px 12px; border: 0; background: var(--surface-1); color: var(--text-secondary); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-secondary); font-weight: 500; }
+.tablewrap { overflow-x: auto; }
+details { margin-top: 8px; }
+summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+.win { color: var(--good); font-weight: 600; }
+code { font-size: 0.92em; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>OOP vs. ECS iteration</h1>
+  <p>A movement update (<code>pos += vel * dt</code>) run four ways over the same scene. Lower ns per entity is better; the breakpoint is where the ECS gets ≥ 5% faster than the classic <code>GameObject*</code> loop and stays faster at every larger entity count.</p>
+  <div class="meta" id="meta"></div>
+</header>
+<section class="tiles" id="tiles"></section>
+<section id="overview"></section>
+<section id="details"></section>
+<section>
+  <h2>How to read this</h2>
+  <p><b>OOP GameObject*</b>: a <code>std::vector&lt;GameObject*&gt;</code> of heap objects, mixed movers and static props, updated through a virtual <code>Update()</code>. Every object is visited and its whole cache line(s) pulled in, including cold payload.</p>
+  <p><b>ECS for_each</b>: <code>view&lt;Position, Velocity&gt;().for_each(...)</code> from the entity library — only movers, but with the library's mutation-safe per-entity bookkeeping (an entity-list snapshot and a liveness lookup per entity).</p>
+  <p><b>ECS for_each_chunk</b>: the library's fast path — a plain loop over each archetype's contiguous Position and Velocity columns.</p>
+  <p><b>Raw SoA arrays</b>: two hand-written arrays of movers only; the upper bound for this layout.</p>
+  <p><b>Why the ECS can win even when everything fits in L1:</b> with movers and props shuffled together, the target of each virtual <code>Update()</code> call is unpredictable, so the OOP loop also pays branch mispredictions and a call per object, and can't be vectorized. That's a cost of heterogeneous <code>GameObject*</code> iteration, separate from cache behavior. The cache effect shows as the <i>growth</i> in OOP's ns/entity as N crosses each cache boundary, while the chunk and SoA lines stay flat. Compare the 100%-moving series, where the call target is always the same, to see the cache effect with branch costs mostly removed.</p>
+  <p>The dashed vertical lines mark the entity count at which the OOP working set (objects + pointer array) outgrows each cache level. Heap fragmentation only changes the OOP layout; ECS and SoA storage is contiguous by construction.</p>
+</section>
+</main>
+<script id="data" type="application/json">{"cpu":"Intel(R) Core(TM) i7-3770 CPU @ 3.40GHz","generated":"2026-11-02 10:11","run":"default sweep, 9 series x 19 counts, 7 samples x \u003e=20 ms","caches":{"l1":32768,"l2":262144,"l3":8388608,"detected":true},"methods":[{"key":"oop","name":"OOP GameObject*"},{"key":"ecs_for_each","name":"ECS for_each"},{"key":"ecs_chunk","name":"ECS for_each_chunk"},{"key":"soa","name":"Raw SoA arrays"}],"series":[{"axis":"baseline","label":"128 B objects, 50% moving, shuffled heap","objBytes":128,"movePct":50,"frag":"shuffled","points":[{"n":16,"movers":8,"oopBytes":2176,"ecsBytes":1920,"hotBytes":128,"ns":[73.2787,139.134,24.0434,9.77351],"nsMin":[72.8406,138.463,23.747,9.74168]},{"n":32,"movers":16,"oopBytes":4352,"ecsBytes":3840,"hotBytes":256,"ns":[169.685,177.998,31.9139,18.3237],"nsMin":[167.891,175.979,31.4571,17.8896]},{"n":64,"movers":32,"oopBytes":8704,"ecsBytes":7680,"hotBytes":512,"ns":[371.474,260.086,47.0656,34.6816],"nsMin":[358.431,242.606,46.9818,34.453]},{"n":128,"movers":64,"oopBytes":17408,"ecsBytes":15360,"hotBytes":1024,"ns":[728.687,392.685,77.1258,68.1392],"nsMin":[711.216,391.52,76.6716,67.8002]},{"n":256,"movers":128,"oopBytes":34816,"ecsBytes":30720,"hotBytes":2048,"ns":[1379,685.014,137.828,141.002],"nsMin":[1364.66,681.57,136.955,139.84]},{"n":512,"movers":256,"oopBytes":69632,"ecsBytes":61440,"hotBytes":4096,"ns":[3010.13,1263.62,272.75,274.356],"nsMin":[2931.59,1246.26,268.927,273.156]},{"n":1024,"movers":512,"oopBytes":139264,"ecsBytes":122880,"hotBytes":8192,"ns":[6013.87,2597.59,520.148,539.839],"nsMin":[5931.72,2573.74,519.067,538.033]},{"n":2048,"movers":1024,"oopBytes":278528,"ecsBytes":245760,"hotBytes":16384,"ns":[13239.5,5186.12,1025,1075.36],"nsMin":[13071.8,5142.12,1016.33,1069.02]},{"n":4096,"movers":2048,"oopBytes":557056,"ecsBytes":491520,"hotBytes":32768,"ns":[28595.3,10174.5,2039.83,2150.67],"nsMin":[28430.7,10083.8,2035.16,2133.78]},{"n":8192,"movers":4096,"oopBytes":1114112,"ecsBytes":983040,"hotBytes":65536,"ns":[58112.1,20574.6,4043.32,4283.1],"nsMin":[57851.4,20437.4,4031.98,4261.94]},{"n":16384,"movers":8192,"oopBytes":2228224,"ecsBytes":1966080,"hotBytes":131072,"ns":[120764,41886.4,8035.7,8566.69],"nsMin":[119902,41528.7,7979.85,8515.48]},{"n":32768,"movers":16384,"oopBytes":4456448,"ecsBytes":3932160,"hotBytes":262144,"ns":[295993,85252,16071.1,17193.8],"nsMin":[293980,84323,16007.4,17016.6]},{"n":65536,"movers":32768,"oopBytes":8912896,"ecsBytes":7864320,"hotBytes":524288,"ns":[777248,172446,32437.4,34122.2],"nsMin":[755985,169322,32216.4,34062.3]},{"n":131072,"movers":65536,"oopBytes":17825792,"ecsBytes":15728640,"hotBytes":1048576,"ns":[2.0003e+06,358698,65405.5,68392],"nsMin":[1.97822e+06,345643,65117.9,67949.1]},{"n":262144,"movers":131072,"oopBytes":35651584,"ecsBytes":31457280,"hotBytes":2097152,"ns":[4.59832e+06,1.11014e+06,129232,136854],"nsMin":[4.55624e+06,1.08817e+06,128681,136304]},{"n":524288,"movers":262144,"oopBytes":71303168,"ecsBytes":62914560,"hotBytes":4194304,"ns":[1.03043e+07,2.37624e+06,261905,280486],"nsMin":[1.00644e+07,2.28974e+06,260397,278281]},{"n":1048576,"movers":524288,"oopBytes":142606336,"ecsBytes":125829120,"hotBytes":8388608,"ns":[2.2395e+07,4.73992e+06,568481,598816],"nsMin":[2.2239e+07,4.72494e+06,551236,589222]},{"n":2097152,"movers":1048576,"oopBytes":285212672,"ecsBytes":251658240,"hotBytes":16777216,"ns":[4.7708e+07,9.56475e+06,1.26989e+06,1.28565e+06],"nsMin":[4.5879e+07,9.37732e+06,1.24236e+06,1.28209e+06]},{"n":4194304,"movers":2097152,"oopBytes":570425344,"ecsBytes":503316480,"hotBytes":33554432,"ns":[9.83819e+07,1.88113e+07,2.65051e+06,2.73492e+06],"nsMin":[9.40961e+07,1.87414e+07,2.62304e+06,2.7159e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":64,"oopBytes":8704},{"found":true,"everywhere":true,"n":16,"oopBytes":2176},{"found":true,"everywhere":true,"n":16,"oopBytes":2176}]},{"axis":"size","label":"32 B objects, 50% moving, shuffled heap","objBytes":32,"movePct":50,"frag":"shuffled","points":[{"n":16,"movers":8,"oopBytes":640,"ecsBytes":384,"hotBytes":128,"ns":[79.0495,136.474,23.8594,9.74182],"nsMin":[76.9439,118.22,23.6253,9.62101]},{"n":32,"movers":16,"oopBytes":1280,"ecsBytes":768,"hotBytes":256,"ns":[176.137,177.402,31.5093,17.9633],"nsMin":[169.156,174.805,31.2282,17.9372]},{"n":64,"movers":32,"oopBytes":2560,"ecsBytes":1536,"hotBytes":512,"ns":[365.229,254.613,46.2731,34.7399],"nsMin":[362.387,227.367,45.9076,34.2579]},{"n":128,"movers":64,"oopBytes":5120,"ecsBytes":3072,"hotBytes":1024,"ns":[734.475,396.168,77.6509,70.3353],"nsMin":[728.951,393.349,77.0007,67.5445]},{"n":256,"movers":128,"oopBytes":10240,"ecsBytes":6144,"hotBytes":2048,"ns":[1419.56,674.435,141.46,140.573],"nsMin":[1402.86,672.847,135.97,139.821]},{"n":512,"movers":256,"oopBytes":20480,"ecsBytes":12288,"hotBytes":4096,"ns":[2881.75,1292.99,270.11,285.303],"nsMin":[2857.98,1284.23,269.139,281.875]},{"n":1024,"movers":512,"oopBytes":40960,"ecsBytes":24576,"hotBytes":8192,"ns":[6323.28,2610.86,518.438,538.122],"nsMin":[6302.68,2583.21,517.149,536.092]},{"n":2048,"movers":1024,"oopBytes":81920,"ecsBytes":49152,"hotBytes":16384,"ns":[12393.3,5019.76,1020.24,1073.84],"nsMin":[12354.2,4993.95,1015.66,1067.56]},{"n":4096,"movers":2048,"oopBytes":163840,"ecsBytes":98304,"hotBytes":32768,"ns":[24705.8,9913.45,2032.24,2153.85],"nsMin":[24683.5,9870.04,2024.05,2128.28]},{"n":8192,"movers":4096,"oopBytes":327680,"ecsBytes":196608,"hotBytes":65536,"ns":[56012.8,21078,4208.74,4377.91],"nsMin":[55067.3,21039.6,4075.49,4353.08]},{"n":16384,"movers":8192,"oopBytes":655360,"ecsBytes":393216,"hotBytes":131072,"ns":[118846,43292.2,8404.85,8642.33],"nsMin":[117320,42335.8,8061.38,8595.73]},{"n":32768,"movers":16384,"oopBytes":1310720,"ecsBytes":786432,"hotBytes":262144,"ns":[244384,87535.2,17865.2,18156.2],"nsMin":[240750,86845.4,17324.2,17818.3]},{"n":65536,"movers":32768,"oopBytes":2621440,"ecsBytes":1572864,"hotBytes":524288,"ns":[562792,174584,34757.6,36565.1],"nsMin":[560886,171825,33475.2,36092.2]},{"n":131072,"movers":65536,"oopBytes":5242880,"ecsBytes":3145728,"hotBytes":1048576,"ns":[1.52562e+06,385628,66905.8,72381.8],"nsMin":[1.38922e+06,367376,64705.5,69425.1]},{"n":262144,"movers":131072,"oopBytes":10485760,"ecsBytes":6291456,"hotBytes":2097152,"ns":[4.22602e+06,1.08344e+06,129366,137129],"nsMin":[4.1315e+06,1.06657e+06,128892,136549]},{"n":524288,"movers":262144,"oopBytes":20971520,"ecsBytes":12582912,"hotBytes":4194304,"ns":[9.40542e+06,2.3554e+06,262447,279620],"nsMin":[9.32022e+06,2.30813e+06,261379,278268]},{"n":1048576,"movers":524288,"oopBytes":41943040,"ecsBytes":25165824,"hotBytes":8388608,"ns":[2.05793e+07,4.65216e+06,553998,585353],"nsMin":[2.05249e+07,4.63316e+06,547404,583053]},{"n":2097152,"movers":1048576,"oopBytes":83886080,"ecsBytes":50331648,"hotBytes":16777216,"ns":[4.41409e+07,9.1364e+06,1.24591e+06,1.29301e+06],"nsMin":[4.39195e+07,8.99802e+06,1.22635e+06,1.27696e+06]},{"n":4194304,"movers":2097152,"oopBytes":167772160,"ecsBytes":100663296,"hotBytes":33554432,"ns":[9.0354e+07,1.8952e+07,2.74362e+06,2.84393e+06],"nsMin":[8.97098e+07,1.87823e+07,2.72018e+06,2.7746e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":64,"oopBytes":2560},{"found":true,"everywhere":true,"n":16,"oopBytes":640},{"found":true,"everywhere":true,"n":16,"oopBytes":640}]},{"axis":"size","label":"64 B objects, 50% moving, shuffled heap","objBytes":64,"movePct":50,"frag":"shuffled","points":[{"n":16,"movers":8,"oopBytes":1152,"ecsBytes":896,"hotBytes":128,"ns":[75.7896,143.667,24.3589,9.80127],"nsMin":[74.6084,129.071,23.8882,9.64798]},{"n":32,"movers":16,"oopBytes":2304,"ecsBytes":1792,"hotBytes":256,"ns":[179.056,184.597,33.266,18.9077],"nsMin":[173.047,169.693,32.5033,18.8547]},{"n":64,"movers":32,"oopBytes":4608,"ecsBytes":3584,"hotBytes":512,"ns":[389.569,275.051,55.221,36.0311],"nsMin":[383.505,271.057,49.2883,34.847]},{"n":128,"movers":64,"oopBytes":9216,"ecsBytes":7168,"hotBytes":1024,"ns":[754.2,451.094,87.3819,68.9813],"nsMin":[735.142,398.144,76.9506,67.6052]},{"n":256,"movers":128,"oopBytes":18432,"ecsBytes":14336,"hotBytes":2048,"ns":[1502.9,760.109,168.258,157.922],"nsMin":[1368.41,680.109,146.292,147.29]},{"n":512,"movers":256,"oopBytes":36864,"ecsBytes":28672,"hotBytes":4096,"ns":[3090.36,1343.6,319.424,276.39],"nsMin":[2912.71,1293.8,274.357,273.957]},{"n":1024,"movers":512,"oopBytes":73728,"ecsBytes":57344,"hotBytes":8192,"ns":[6904.73,2921.16,591.027,633.535],"nsMin":[6261.2,2717.76,519.478,551.753]},{"n":2048,"movers":1024,"oopBytes":147456,"ecsBytes":114688,"hotBytes":16384,"ns":[13162.6,6064.73,1191.55,1243.59],"nsMin":[12920.3,5861.88,1047.44,1136.99]},{"n":4096,"movers":2048,"oopBytes":294912,"ecsBytes":229376,"hotBytes":32768,"ns":[28474.1,10395.1,2069.07,2195.22],"nsMin":[28305.5,10339.2,2058.66,2146.99]},{"n":8192,"movers":4096,"oopBytes":589824,"ecsBytes":458752,"hotBytes":65536,"ns":[59055.9,21351.5,4134.98,4381.42],"nsMin":[56971,20754.9,4113.26,4352.56]},{"n":16384,"movers":8192,"oopBytes":1179648,"ecsBytes":917504,"hotBytes":131072,"ns":[119048,41671.3,8043.51,8687.03],"nsMin":[118352,41387.8,7984.6,8578.44]},{"n":32768,"movers":16384,"oopBytes":2359296,"ecsBytes":1835008,"hotBytes":262144,"ns":[251895,83892.9,16033,17921.1],"nsMin":[250295,82562.7,15958.2,17329.8]},{"n":65536,"movers":32768,"oopBytes":4718592,"ecsBytes":3670016,"hotBytes":524288,"ns":[654850,166296,32375.7,34242.8],"nsMin":[650127,165088,32109,34151.2]},{"n":131072,"movers":65536,"oopBytes":9437184,"ecsBytes":7340032,"hotBytes":1048576,"ns":[1.87567e+06,351358,64666.6,68637.2],"nsMin":[1.83237e+06,349713,64365.4,68374.3]},{"n":262144,"movers":131072,"oopBytes":18874368,"ecsBytes":14680064,"hotBytes":2097152,"ns":[4.46631e+06,1.1121e+06,129322,136883],"nsMin":[4.42821e+06,1.09754e+06,129096,136555]},{"n":524288,"movers":262144,"oopBytes":37748736,"ecsBytes":29360128,"hotBytes":4194304,"ns":[1.03032e+07,2.35436e+06,261605,280633],"nsMin":[1.0024e+07,2.2665e+06,260883,278792]},{"n":1048576,"movers":524288,"oopBytes":75497472,"ecsBytes":58720256,"hotBytes":8388608,"ns":[2.16081e+07,4.69232e+06,556426,598047],"nsMin":[2.14864e+07,4.54792e+06,547833,595486]},{"n":2097152,"movers":1048576,"oopBytes":150994944,"ecsBytes":117440512,"hotBytes":16777216,"ns":[4.52628e+07,9.2677e+06,1.25205e+06,1.28623e+06],"nsMin":[4.52283e+07,8.9858e+06,1.22371e+06,1.27511e+06]},{"n":4194304,"movers":2097152,"oopBytes":301989888,"ecsBytes":234881024,"hotBytes":33554432,"ns":[9.34418e+07,1.87036e+07,2.69426e+06,2.70951e+06],"nsMin":[9.29625e+07,1.86752e+07,2.68799e+06,2.70416e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":64,"oopBytes":4608},{"found":true,"everywhere":true,"n":16,"oopBytes":1152},{"found":true,"everywhere":true,"n":16,"oopBytes":1152}]},{"axis":"size","label":"256 B objects, 50% moving, shuffled heap","objBytes":256,"movePct":50,"frag":"shuffled","points":[{"n":16,"movers":8,"oopBytes":4224,"ecsBytes":3968,"hotBytes":128,"ns":[82.7922,140.823,24.034,9.56599],"nsMin":[77.4006,140.508,23.9649,9.52498]},{"n":32,"movers":16,"oopBytes":8448,"ecsBytes":7936,"hotBytes":256,"ns":[180.643,171.699,31.8462,17.9898],"nsMin":[167.063,171.081,31.7442,17.8119]},{"n":64,"movers":32,"oopBytes":16896,"ecsBytes":15872,"hotBytes":512,"ns":[365.937,251.743,46.6753,34.972],"nsMin":[364.577,243.947,46.6389,34.3295]},{"n":128,"movers":64,"oopBytes":33792,"ecsBytes":31744,"hotBytes":1024,"ns":[733.807,398.848,84.7735,67.8482],"nsMin":[729.331,397.309,84.3604,67.4909]},{"n":256,"movers":128,"oopBytes":67584,"ecsBytes":63488,"hotBytes":2048,"ns":[1442.94,682.714,136.985,140.396],"nsMin":[1411.87,678.316,136.819,139.38]},{"n":512,"movers":256,"oopBytes":135168,"ecsBytes":126976,"hotBytes":4096,"ns":[2960.59,1293.05,270.742,271.877],"nsMin":[2914.12,1287.25,268.735,271.111]},{"n":1024,"movers":512,"oopBytes":270336,"ecsBytes":253952,"hotBytes":8192,"ns":[6495.76,2539.91,517.202,539.412],"nsMin":[6475.09,2531.04,516.769,536.232]},{"n":2048,"movers":1024,"oopBytes":540672,"ecsBytes":507904,"hotBytes":16384,"ns":[13495.7,5079.74,1017.41,1070.31],"nsMin":[13462.4,5069.76,1013.31,1065.2]},{"n":4096,"movers":2048,"oopBytes":1081344,"ecsBytes":1015808,"hotBytes":32768,"ns":[28978.5,10225.1,2208.19,2131.74],"nsMin":[28933.6,10143.5,2200.41,2124.1]},{"n":8192,"movers":4096,"oopBytes":2162688,"ecsBytes":2031616,"hotBytes":65536,"ns":[62249.2,20727.4,4017.87,4248.79],"nsMin":[61959.3,20700.8,3995.27,4233]},{"n":16384,"movers":8192,"oopBytes":4325376,"ecsBytes":4063232,"hotBytes":131072,"ns":[145378,40704.1,8016.91,8535.69],"nsMin":[145145,40376.3,7968.19,8469.9]},{"n":32768,"movers":16384,"oopBytes":8650752,"ecsBytes":8126464,"hotBytes":262144,"ns":[354838,82489.4,16005.6,17008.4],"nsMin":[351686,82309.1,15949.4,16962.8]},{"n":65536,"movers":32768,"oopBytes":17301504,"ecsBytes":16252928,"hotBytes":524288,"ns":[893800,168755,32280.1,34372.1],"nsMin":[880374,168230,32154.7,34167.4]},{"n":131072,"movers":65536,"oopBytes":34603008,"ecsBytes":32505856,"hotBytes":1048576,"ns":[2.28784e+06,357328,64719.8,68475.2],"nsMin":[2.28151e+06,354796,64270.7,68249.8]},{"n":262144,"movers":131072,"oopBytes":69206016,"ecsBytes":65011712,"hotBytes":2097152,"ns":[5.21127e+06,1.06269e+06,129928,138493],"nsMin":[5.18142e+06,1.05846e+06,129033,136716]},{"n":524288,"movers":262144,"oopBytes":138412032,"ecsBytes":130023424,"hotBytes":4194304,"ns":[1.11238e+07,2.34537e+06,261674,278031],"nsMin":[1.0985e+07,2.32114e+06,260284,277242]},{"n":1048576,"movers":524288,"oopBytes":276824064,"ecsBytes":260046848,"hotBytes":8388608,"ns":[2.27996e+07,4.68946e+06,548714,588083],"nsMin":[2.27703e+07,4.60521e+06,545614,583091]},{"n":2097152,"movers":1048576,"oopBytes":553648128,"ecsBytes":520093696,"hotBytes":16777216,"ns":[4.67468e+07,9.47712e+06,1.24146e+06,1.28948e+06],"nsMin":[4.62239e+07,9.36835e+06,1.22978e+06,1.28041e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":32,"oopBytes":8448},{"found":true,"everywhere":true,"n":16,"oopBytes":4224},{"found":true,"everywhere":true,"n":16,"oopBytes":4224}]},{"axis":"size","label":"512 B objects, 50% moving, shuffled heap","objBytes":512,"movePct":50,"frag":"shuffled","points":[{"n":16,"movers":8,"oopBytes":8320,"ecsBytes":8064,"hotBytes":128,"ns":[76.6936,140.794,24.6063,9.6787],"nsMin":[76.5586,140.212,24.4145,9.6075]},{"n":32,"movers":16,"oopBytes":16640,"ecsBytes":16128,"hotBytes":256,"ns":[167.833,176.356,31.72,17.9125],"nsMin":[167.564,174.951,31.5984,17.8854]},{"n":64,"movers":32,"oopBytes":33280,"ecsBytes":32256,"hotBytes":512,"ns":[365.188,247.652,49.218,34.4742],"nsMin":[361.884,220.584,49.0501,34.3885]},{"n":128,"movers":64,"oopBytes":66560,"ecsBytes":64512,"hotBytes":1024,"ns":[745.509,397.461,77.1416,68.0451],"nsMin":[737.942,395.34,76.7222,67.4657]},{"n":256,"movers":128,"oopBytes":133120,"ecsBytes":129024,"hotBytes":2048,"ns":[1400.38,668.074,137.046,139.432],"nsMin":[1344.92,664.292,136.605,139.204]},{"n":512,"movers":256,"oopBytes":266240,"ecsBytes":258048,"hotBytes":4096,"ns":[3075.62,1280.36,269.958,272.354],"nsMin":[3060.55,1278.62,268.96,271.948]},{"n":1024,"movers":512,"oopBytes":532480,"ecsBytes":516096,"hotBytes":8192,"ns":[6908.01,2599.13,518.173,538.068],"nsMin":[6774.13,2586.69,517.445,537.18]},{"n":2048,"movers":1024,"oopBytes":1064960,"ecsBytes":1032192,"hotBytes":16384,"ns":[14519.6,5052.52,1016.1,1068.64],"nsMin":[14474.7,5007.91,1014.38,1066.37]},{"n":4096,"movers":2048,"oopBytes":2129920,"ecsBytes":2064384,"hotBytes":32768,"ns":[30765.1,9913.21,2024.86,2223.99],"nsMin":[30656.7,9866.86,2018.32,2210.26]},{"n":8192,"movers":4096,"oopBytes":4259840,"ecsBytes":4128768,"hotBytes":65536,"ns":[73014.9,20843.1,4012.33,4286.22],"nsMin":[72814.2,20748.4,3999.77,4244.8]},{"n":16384,"movers":8192,"oopBytes":8519680,"ecsBytes":8257536,"hotBytes":131072,"ns":[171439,41787.3,8017.06,8487.82],"nsMin":[171129,41436.5,7985.85,8470.69]},{"n":32768,"movers":16384,"oopBytes":17039360,"ecsBytes":16515072,"hotBytes":262144,"ns":[416948,82676.6,15968.8,16995.5],"nsMin":[415156,82188.3,15922.6,16969.2]},{"n":65536,"movers":32768,"oopBytes":34078720,"ecsBytes":33030144,"hotBytes":524288,"ns":[998367,164296,31987.5,34024.6],"nsMin":[986167,163507,31922.2,33988.3]},{"n":131072,"movers":65536,"oopBytes":68157440,"ecsBytes":66060288,"hotBytes":1048576,"ns":[2.49997e+06,360408,64713.2,68534.3],"nsMin":[2.47576e+06,358992,64291.3,68174.4]},{"n":262144,"movers":131072,"oopBytes":136314880,"ecsBytes":132120576,"hotBytes":2097152,"ns":[5.47778e+06,1.06648e+06,128887,136780],"nsMin":[5.41928e+06,1.06414e+06,128550,136690]},{"n":524288,"movers":262144,"oopBytes":272629760,"ecsBytes":264241152,"hotBytes":4194304,"ns":[1.17176e+07,2.36477e+06,261582,284735],"nsMin":[1.14841e+07,2.35114e+06,260503,278505]},{"n":1048576,"movers":524288,"oopBytes":545259520,"ecsBytes":528482304,"hotBytes":8388608,"ns":[2.33717e+07,5.32858e+06,547932,588324],"nsMin":[2.32977e+07,5.304e+06,547743,586773]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":64,"oopBytes":33280},{"found":true,"everywhere":true,"n":16,"oopBytes":8320},{"found":true,"everywhere":true,"n":16,"oopBytes":8320}]},{"axis":"move","label":"128 B objects, 10% moving, shuffled heap","objBytes":128,"movePct":10,"frag":"shuffled","points":[{"n":16,"movers":2,"oopBytes":2176,"ecsBytes":1920,"hotBytes":32,"ns":[43.0565,89.8562,20.5309,4.1392],"nsMin":[42.8728,89.3605,20.4049,4.11921]},{"n":32,"movers":3,"oopBytes":4352,"ecsBytes":3840,"hotBytes":48,"ns":[98.2691,114.389,21.3967,5.19488],"nsMin":[97.7918,112.312,21.2932,5.16416]},{"n":64,"movers":6,"oopBytes":8704,"ecsBytes":7680,"hotBytes":96,"ns":[197.672,121.841,22.4384,7.64365],"nsMin":[187.516,116.004,22.3247,7.60242]},{"n":128,"movers":13,"oopBytes":17408,"ecsBytes":15360,"hotBytes":208,"ns":[384.909,139.027,28.6378,14.8814],"nsMin":[384.102,138.325,28.5466,14.8522]},{"n":256,"movers":26,"oopBytes":34816,"ecsBytes":30720,"hotBytes":416,"ns":[775.16,194.431,42.1906,28.2509],"nsMin":[771.897,193.977,41.9642,28.1655]},{"n":512,"movers":51,"oopBytes":69632,"ecsBytes":61440,"hotBytes":816,"ns":[1662.56,334.25,64.615,53.9803],"nsMin":[1655.34,333.207,64.3598,53.8637]},{"n":1024,"movers":102,"oopBytes":139264,"ecsBytes":122880,"hotBytes":1632,"ns":[3368.94,559.507,113.154,106.782],"nsMin":[3352.99,558.244,111.867,106.401]},{"n":2048,"movers":205,"oopBytes":278528,"ecsBytes":245760,"hotBytes":3280,"ns":[6921.07,1171.07,219.026,218.762],"nsMin":[6890.23,1167.91,218.585,217.823]},{"n":4096,"movers":410,"oopBytes":557056,"ecsBytes":491520,"hotBytes":6560,"ns":[14986,2248.4,419.244,430.827],"nsMin":[14862.4,2242.99,416.878,430.063]},{"n":8192,"movers":819,"oopBytes":1114112,"ecsBytes":983040,"hotBytes":13104,"ns":[31341.8,4543.36,815.332,856.385],"nsMin":[31149.1,4527.64,813.91,853.398]},{"n":16384,"movers":1638,"oopBytes":2228224,"ecsBytes":1966080,"hotBytes":26208,"ns":[69016.8,10138.2,1614.36,1702.9],"nsMin":[68435.9,10081.6,1612.21,1693.86]},{"n":32768,"movers":3277,"oopBytes":4456448,"ecsBytes":3932160,"hotBytes":52432,"ns":[180166,20615.2,3216.87,3416.56],"nsMin":[179596,20568.7,3208.02,3394.39]},{"n":65536,"movers":6554,"oopBytes":8912896,"ecsBytes":7864320,"hotBytes":104864,"ns":[513830,43421.1,6508.25,6862.3],"nsMin":[510821,43108.7,6401.39,6783.93]},{"n":131072,"movers":13107,"oopBytes":17825792,"ecsBytes":15728640,"hotBytes":209712,"ns":[1.42002e+06,89652.1,14613,13719.9],"nsMin":[1.39339e+06,89467.1,13433.4,13662.3]},{"n":262144,"movers":26214,"oopBytes":35651584,"ecsBytes":31457280,"hotBytes":419424,"ns":[3.41223e+06,254308,29838.8,27526.9],"nsMin":[3.38872e+06,229764,26353.8,27348]},{"n":524288,"movers":52429,"oopBytes":71303168,"ecsBytes":62914560,"hotBytes":838864,"ns":[8.78398e+06,894395,59783.9,58064.8],"nsMin":[7.74515e+06,877673,51633.4,56729.8]},{"n":1048576,"movers":104858,"oopBytes":142606336,"ecsBytes":125829120,"hotBytes":1677728,"ns":[1.91e+07,2.93189e+06,108605,125270],"nsMin":[1.69518e+07,2.26389e+06,107827,116529]},{"n":2097152,"movers":209715,"oopBytes":285212672,"ecsBytes":251658240,"hotBytes":3355440,"ns":[3.60587e+07,4.86686e+06,208264,222444],"nsMin":[3.54462e+07,4.8458e+06,207508,221616]},{"n":4194304,"movers":419430,"oopBytes":570425344,"ecsBytes":503316480,"hotBytes":6710880,"ns":[7.36213e+07,1.00762e+07,428489,456385],"nsMin":[7.34492e+07,9.99935e+06,427524,455139]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":64,"oopBytes":8704},{"found":true,"everywhere":true,"n":16,"oopBytes":2176},{"found":true,"everywhere":true,"n":16,"oopBytes":2176}]},{"axis":"move","label":"128 B objects, 100% moving, shuffled heap","objBytes":128,"movePct":100,"frag":"shuffled","points":[{"n":16,"movers":16,"oopBytes":2176,"ecsBytes":1920,"hotBytes":256,"ns":[33.6232,171.504,28.9133,17.8938],"nsMin":[33.4005,168.913,28.8606,17.8349]},{"n":32,"movers":32,"oopBytes":4352,"ecsBytes":3840,"hotBytes":512,"ns":[71.2259,242.475,43.8659,34.6818],"nsMin":[70.3093,242.401,43.6967,34.5579]},{"n":64,"movers":64,"oopBytes":8704,"ecsBytes":7680,"hotBytes":1024,"ns":[137.434,385.382,74.0458,67.5284],"nsMin":[137.065,383.254,73.6514,67.4695]},{"n":128,"movers":128,"oopBytes":17408,"ecsBytes":15360,"hotBytes":2048,"ns":[271.802,673.12,138.515,140.546],"nsMin":[271.279,671.194,137.293,139.702]},{"n":256,"movers":256,"oopBytes":34816,"ecsBytes":30720,"hotBytes":4096,"ns":[536.147,1233.44,268.058,272.89],"nsMin":[533.907,1228.66,266.98,272.33]},{"n":512,"movers":512,"oopBytes":69632,"ecsBytes":61440,"hotBytes":8192,"ns":[1391.92,2437.55,517.074,539.659],"nsMin":[1379.15,2431.29,514.212,537.772]},{"n":1024,"movers":1024,"oopBytes":139264,"ecsBytes":122880,"hotBytes":16384,"ns":[2843.19,4776.72,1014.18,1073.82],"nsMin":[2823.11,4758.43,1010.7,1066.47]},{"n":2048,"movers":2048,"oopBytes":278528,"ecsBytes":245760,"hotBytes":32768,"ns":[6309.69,9710.95,2203.7,2140.11],"nsMin":[6282.69,9685.53,2198.09,2134.69]},{"n":4096,"movers":4096,"oopBytes":557056,"ecsBytes":491520,"hotBytes":65536,"ns":[15603.5,18977.8,4012.7,4266],"nsMin":[15556.6,18961.2,4006.38,4243.08]},{"n":8192,"movers":8192,"oopBytes":1114112,"ecsBytes":983040,"hotBytes":131072,"ns":[31939.5,38785.2,7996.05,9376.62],"nsMin":[31742.4,38710.4,7987.17,9322.66]},{"n":16384,"movers":16384,"oopBytes":2228224,"ecsBytes":1966080,"hotBytes":262144,"ns":[70078.3,76526,16166.6,17037.9],"nsMin":[69955.3,76186.5,16004.4,16996.4]},{"n":32768,"movers":32768,"oopBytes":4456448,"ecsBytes":3932160,"hotBytes":524288,"ns":[186181,156083,32646.7,34137.7],"nsMin":[183061,155357,32484.7,33991.8]},{"n":65536,"movers":65536,"oopBytes":8912896,"ecsBytes":7864320,"hotBytes":1048576,"ns":[679218,317609,64496.4,68606.4],"nsMin":[669609,316542,64376.3,68054.5]},{"n":131072,"movers":131072,"oopBytes":17825792,"ecsBytes":15728640,"hotBytes":2097152,"ns":[1.845e+06,884583,128923,136864],"nsMin":[1.83313e+06,874829,128685,136557]},{"n":262144,"movers":262144,"oopBytes":35651584,"ecsBytes":31457280,"hotBytes":4194304,"ns":[4.5805e+06,1.82757e+06,260721,277845],"nsMin":[4.54804e+06,1.82031e+06,259639,276889]},{"n":524288,"movers":524288,"oopBytes":71303168,"ecsBytes":62914560,"hotBytes":8388608,"ns":[1.01365e+07,3.76296e+06,547857,589208],"nsMin":[1.00734e+07,3.74266e+06,545394,587364]},{"n":1048576,"movers":1048576,"oopBytes":142606336,"ecsBytes":125829120,"hotBytes":16777216,"ns":[2.13368e+07,7.41718e+06,1.24542e+06,1.28874e+06],"nsMin":[2.10846e+07,7.39968e+06,1.23561e+06,1.27374e+06]},{"n":2097152,"movers":2097152,"oopBytes":285212672,"ecsBytes":251658240,"hotBytes":33554432,"ns":[4.32329e+07,1.56046e+07,2.64874e+06,2.75527e+06],"nsMin":[4.30348e+07,1.5589e+07,2.63281e+06,2.69255e+06]},{"n":4194304,"movers":4194304,"oopBytes":570425344,"ecsBytes":503316480,"hotBytes":67108864,"ns":[8.70492e+07,3.3525e+07,5.8133e+06,5.9423e+06],"nsMin":[8.6513e+07,3.24933e+07,5.42612e+06,5.52713e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":32768,"oopBytes":4456448},{"found":true,"everywhere":true,"n":16,"oopBytes":2176},{"found":true,"everywhere":true,"n":16,"oopBytes":2176}]},{"axis":"frag","label":"128 B objects, 50% moving, sequential heap","objBytes":128,"movePct":50,"frag":"sequential","points":[{"n":16,"movers":8,"oopBytes":2176,"ecsBytes":1920,"hotBytes":128,"ns":[73.0266,141.174,23.915,9.77664],"nsMin":[72.642,140.601,23.779,9.64411]},{"n":32,"movers":16,"oopBytes":4352,"ecsBytes":3840,"hotBytes":256,"ns":[198.037,176.331,31.518,17.967],"nsMin":[186.389,175.856,31.4375,17.8499]},{"n":64,"movers":32,"oopBytes":8704,"ecsBytes":7680,"hotBytes":512,"ns":[303.02,250.088,46.5781,34.374],"nsMin":[301.471,237.397,46.2372,34.3522]},{"n":128,"movers":64,"oopBytes":17408,"ecsBytes":15360,"hotBytes":1024,"ns":[661.427,387.559,77.0149,67.7481],"nsMin":[660.334,370.095,76.3967,67.449]},{"n":256,"movers":128,"oopBytes":34816,"ecsBytes":30720,"hotBytes":2048,"ns":[1448.83,683.47,137.246,139.247],"nsMin":[1435.97,669.074,136.068,138.982]},{"n":512,"movers":256,"oopBytes":69632,"ecsBytes":61440,"hotBytes":4096,"ns":[3087.08,1337.4,269.482,273.996],"nsMin":[3056.93,1332.46,268.657,270.699]},{"n":1024,"movers":512,"oopBytes":139264,"ecsBytes":122880,"hotBytes":8192,"ns":[6037.89,2566.7,521.738,536.327],"nsMin":[5890.13,2554.63,516.622,534.778]},{"n":2048,"movers":1024,"oopBytes":278528,"ecsBytes":245760,"hotBytes":16384,"ns":[12715.7,5110.43,1095.97,1073.83],"nsMin":[12681.8,5077.7,1079.54,1063.96]},{"n":4096,"movers":2048,"oopBytes":557056,"ecsBytes":491520,"hotBytes":32768,"ns":[26636,10220.4,2209,2147.88],"nsMin":[26457.5,10127.1,2202.33,2131.93]},{"n":8192,"movers":4096,"oopBytes":1114112,"ecsBytes":983040,"hotBytes":65536,"ns":[53774.1,20744.2,4026.27,4244.78],"nsMin":[53694.9,20610.2,4008.87,4241.33]},{"n":16384,"movers":8192,"oopBytes":2228224,"ecsBytes":1966080,"hotBytes":131072,"ns":[107900,41394.8,8008.38,8508.44],"nsMin":[107205,41050.8,7979.95,8480.06]},{"n":32768,"movers":16384,"oopBytes":4456448,"ecsBytes":3932160,"hotBytes":262144,"ns":[217451,82045.4,16092.6,17042.9],"nsMin":[215801,81580.7,16052.4,16998]},{"n":65536,"movers":32768,"oopBytes":8912896,"ecsBytes":7864320,"hotBytes":524288,"ns":[563715,167172,32586.3,34159.7],"nsMin":[555600,165733,32554.5,34011.7]},{"n":131072,"movers":65536,"oopBytes":17825792,"ecsBytes":15728640,"hotBytes":1048576,"ns":[1.46404e+06,355159,64374.9,68786.1],"nsMin":[1.45459e+06,351924,64273.1,68333.4]},{"n":262144,"movers":131072,"oopBytes":35651584,"ecsBytes":31457280,"hotBytes":2097152,"ns":[3.23037e+06,1.0661e+06,129445,138183],"nsMin":[3.22308e+06,1.06181e+06,128894,136627]},{"n":524288,"movers":262144,"oopBytes":71303168,"ecsBytes":62914560,"hotBytes":4194304,"ns":[6.65262e+06,2.30102e+06,261853,285046],"nsMin":[6.62065e+06,2.29711e+06,261075,279345]},{"n":1048576,"movers":524288,"oopBytes":142606336,"ecsBytes":125829120,"hotBytes":8388608,"ns":[1.32866e+07,4.60548e+06,547412,593172],"nsMin":[1.32286e+07,4.58594e+06,545676,587594]},{"n":2097152,"movers":1048576,"oopBytes":285212672,"ecsBytes":251658240,"hotBytes":16777216,"ns":[2.67009e+07,9.53672e+06,1.24632e+06,1.28101e+06],"nsMin":[2.61484e+07,9.48485e+06,1.23574e+06,1.27474e+06]},{"n":4194304,"movers":2097152,"oopBytes":570425344,"ecsBytes":503316480,"hotBytes":33554432,"ns":[5.30658e+07,1.89028e+07,2.6375e+06,2.71135e+06],"nsMin":[5.28216e+07,1.8789e+07,2.62748e+06,2.69671e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":32,"oopBytes":4352},{"found":true,"everywhere":true,"n":16,"oopBytes":2176},{"found":true,"everywhere":true,"n":16,"oopBytes":2176}]},{"axis":"frag","label":"128 B objects, 50% moving, interleaved heap","objBytes":128,"movePct":50,"frag":"interleaved","points":[{"n":16,"movers":8,"oopBytes":2176,"ecsBytes":1920,"hotBytes":128,"ns":[73.3149,141.294,24.2694,9.64276],"nsMin":[73.0838,140.676,23.8265,9.60658]},{"n":32,"movers":16,"oopBytes":4352,"ecsBytes":3840,"hotBytes":256,"ns":[197.853,177.86,31.4752,17.8877],"nsMin":[197.132,176.87,31.3547,17.8186]},{"n":64,"movers":32,"oopBytes":8704,"ecsBytes":7680,"hotBytes":512,"ns":[302.72,245.613,46.2664,34.3786],"nsMin":[300.729,245.186,46.1599,34.3153]},{"n":128,"movers":64,"oopBytes":17408,"ecsBytes":15360,"hotBytes":1024,"ns":[665.036,395.739,77.8053,68.0366],"nsMin":[663.563,394.236,77.5763,67.4047]},{"n":256,"movers":128,"oopBytes":34816,"ecsBytes":30720,"hotBytes":2048,"ns":[1267.37,678.087,136.807,139.848],"nsMin":[1265.15,672.242,136.552,139.78]},{"n":512,"movers":256,"oopBytes":69632,"ecsBytes":61440,"hotBytes":4096,"ns":[3072.89,1253,271.365,273.142],"nsMin":[3056.53,1250,269.611,271.484]},{"n":1024,"movers":512,"oopBytes":139264,"ecsBytes":122880,"hotBytes":8192,"ns":[6062.85,2566.33,518.48,538.942],"nsMin":[6040.18,2554.48,517.426,537.622]},{"n":2048,"movers":1024,"oopBytes":278528,"ecsBytes":245760,"hotBytes":16384,"ns":[12786.6,4988.45,1023.91,1072.71],"nsMin":[12753.4,4980.38,1015.9,1065.59]},{"n":4096,"movers":2048,"oopBytes":557056,"ecsBytes":491520,"hotBytes":32768,"ns":[26792.9,10031.4,2033.13,2137.78],"nsMin":[26673.6,9981.7,2023.99,2133.32]},{"n":8192,"movers":4096,"oopBytes":1114112,"ecsBytes":983040,"hotBytes":65536,"ns":[54330,21021.5,4385.15,4690.32],"nsMin":[54153.6,20852.1,4379.9,4666.79]},{"n":16384,"movers":8192,"oopBytes":2228224,"ecsBytes":1966080,"hotBytes":131072,"ns":[108068,40811.5,7994.43,8493.66],"nsMin":[107704,40420.3,7974,8469.36]},{"n":32768,"movers":16384,"oopBytes":4456448,"ecsBytes":3932160,"hotBytes":262144,"ns":[217985,81414.2,16049.5,17094.4],"nsMin":[216800,81055.2,15973.2,17036.6]},{"n":65536,"movers":32768,"oopBytes":8912896,"ecsBytes":7864320,"hotBytes":524288,"ns":[569861,167366,32068.1,34061.7],"nsMin":[568133,166632,31929,33972]},{"n":131072,"movers":65536,"oopBytes":17825792,"ecsBytes":15728640,"hotBytes":1048576,"ns":[1.48991e+06,359996,64711.4,68742.8],"nsMin":[1.48442e+06,359181,64303.9,68290.9]},{"n":262144,"movers":131072,"oopBytes":35651584,"ecsBytes":31457280,"hotBytes":2097152,"ns":[3.27493e+06,1.06469e+06,130230,137503],"nsMin":[3.26102e+06,1.04773e+06,128868,136563]},{"n":524288,"movers":262144,"oopBytes":71303168,"ecsBytes":62914560,"hotBytes":4194304,"ns":[6.75727e+06,2.27182e+06,263363,318238],"nsMin":[6.71287e+06,2.26408e+06,262022,277203]},{"n":1048576,"movers":524288,"oopBytes":142606336,"ecsBytes":125829120,"hotBytes":8388608,"ns":[1.38692e+07,4.6001e+06,632109,669123],"nsMin":[1.34264e+07,4.54538e+06,553906,607603]},{"n":2097152,"movers":1048576,"oopBytes":285212672,"ecsBytes":251658240,"hotBytes":16777216,"ns":[2.92605e+07,9.6439e+06,1.25698e+06,1.50342e+06],"nsMin":[2.65156e+07,9.45815e+06,1.22941e+06,1.28478e+06]},{"n":4194304,"movers":2097152,"oopBytes":570425344,"ecsBytes":503316480,"hotBytes":33554432,"ns":[5.38973e+07,1.90865e+07,2.64051e+06,2.72336e+06],"nsMin":[5.30875e+07,1.89741e+07,2.61636e+06,2.69994e+06]}],"breakpoints":[{"found":false,"everywhere":false,"n":0,"oopBytes":0},{"found":true,"everywhere":false,"n":32,"oopBytes":4352},{"found":true,"everywhere":true,"n":16,"oopBytes":2176},{"found":true,"everywhere":true,"n":16,"oopBytes":2176}]}]}</script>
+<script>
+(() => {
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const M = D.methods; // [{key, name}]
+const OOP = 0, FE = 1, CH = 2, SOA = 3;
+const NS = "http://www.w3.org/2000/svg";
+
+const fmtN = n => n >= 1048576 && n % 1048576 === 0 ? (n / 1048576) + "M"
+  : n >= 1024 && n % 1024 === 0 ? (n / 1024) + "K" : String(n);
+const fmtBytes = b => {
+  const u = ["B", "KiB", "MiB", "GiB"]; let i = 0;
+  while (b >= 1024 && i < 3) { b /= 1024; i++; }
+  return (i === 0 || b >= 100 || Number.isInteger(b) ? b.toFixed(0) : b.toFixed(1)) + " " + u[i];
+};
+const fmtNs = v => v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+const fmtX = v => (v >= 10 ? v.toFixed(1) : v.toFixed(2)) + "×";
+const level = b => b <= D.caches.l1 ? "L1" : b <= D.caches.l2 ? "L2" : (D.caches.l3 && b <= D.caches.l3) ? "L3" : "DRAM";
+const el = (tag, attrs = {}, text) => {
+  const e = tag === "svg" || attrs._svg ? document.createElementNS(NS, tag) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) if (k !== "_svg") e.setAttribute(k, v);
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+const svgEl = (tag, attrs, text) => el(tag, Object.assign({ _svg: 1 }, attrs), text);
+
+// cache-boundary entity counts for an OOP object of objBytes (+8 for its pointer)
+const cacheLines = objBytes => [["L1", D.caches.l1], ["L2", D.caches.l2], ["L3", D.caches.l3]]
+  .filter(([, size]) => size > 0)
+  .map(([name, size]) => ({ x: size / (objBytes + 8), label: name + " " + fmtBytes(size) }));
+
+function logTicks(lo, hi) {
+  const out = [];
+  for (let e = Math.floor(Math.log10(lo)) - 1; e <= Math.ceil(Math.log10(hi)) + 1; e++)
+    for (const m of [1, 2, 5]) { const v = m * Math.pow(10, e); if (v >= lo * 0.999 && v <= hi * 1.001) out.push(v); }
+  return out.length >= 2 ? out : [lo, hi];
+}
+
+// Line chart: log2 x (entity count), log y. series: [{name, color, ys}], all aligned to xs.
+function lineChart(opt) {
+  const W = opt.width || 720, H = opt.height || 300, ml = 54, mr = opt.width ? 96 : 128, mt = 22, mb = 40;
+  const pw = W - ml - mr, ph = H - mt - mb;
+  const wrap = el("div", { class: "chart" });
+
+  const legend = el("div", { class: "legend" });
+  for (const s of opt.series) {
+    const sp = el("span"); const sw = el("i"); sw.style.background = s.color;
+    sp.append(sw, s.name); legend.append(sp);
+  }
+  wrap.append(legend);
+
+  const all = opt.series.flatMap(s => s.ys).filter(v => v > 0);
+  let ylo = Math.min(...all, opt.hline ? opt.hline.y : Infinity), yhi = Math.max(...all, opt.hline ? opt.hline.y : 0);
+  ylo = Math.pow(10, Math.floor(Math.log10(ylo) * 4) / 4); yhi = Math.pow(10, Math.ceil(Math.log10(yhi) * 4) / 4);
+  const lx0 = Math.log2(opt.xs[0]), lx1 = Math.log2(opt.xs[opt.xs.length - 1]);
+  const X = n => ml + (lx1 === lx0 ? pw / 2 : (Math.log2(n) - lx0) / (lx1 - lx0) * pw);
+  const Y = v => mt + ph - (Math.log10(v) - Math.log10(ylo)) / (Math.log10(yhi) - Math.log10(ylo)) * ph;
+
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opt.title });
+  // grid + y axis
+  for (const t of logTicks(ylo, yhi)) {
+    svg.append(svgEl("line", { x1: ml, x2: ml + pw, y1: Y(t), y2: Y(t), stroke: "var(--grid)", "stroke-width": 1 }));
+    svg.append(svgEl("text", { x: ml - 8, y: Y(t) + 4, "text-anchor": "end", "font-size": 11, fill: "var(--text-muted)" }, opt.fmtTick(t)));
+  }
+  svg.append(svgEl("text", { x: ml - 8, y: mt - 10, "text-anchor": "end", "font-size": 11, fill: "var(--text-secondary)" }, opt.yLabel));
+  // x axis
+  svg.append(svgEl("line", { x1: ml, x2: ml + pw, y1: mt + ph, y2: mt + ph, stroke: "var(--axis)", "stroke-width": 1 }));
+  const step = Math.max(1, Math.ceil(opt.xs.length / 10));
+  opt.xs.forEach((n, i) => {
+    if (i % step) return;
+    svg.append(svgEl("text", { x: X(n), y: mt + ph + 16, "text-anchor": "middle", "font-size": 11, fill: "var(--text-muted)" }, fmtN(n)));
+  });
+  svg.append(svgEl("text", { x: ml + pw / 2, y: H - 4, "text-anchor": "middle", "font-size": 11, fill: "var(--text-secondary)" }, "entities (log scale)"));
+
+  // cache boundaries
+  for (const v of opt.vlines || []) {
+    if (v.x < opt.xs[0] || v.x > opt.xs[opt.xs.length - 1]) continue;
+    svg.append(svgEl("line", { x1: X(v.x), x2: X(v.x), y1: mt, y2: mt + ph, stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "4 4" }));
+    svg.append(svgEl("text", { x: X(v.x) + 4, y: mt + 10, "font-size": 11, fill: "var(--text-muted)" }, v.label));
+  }
+  // reference line (1x)
+  if (opt.hline) {
+    svg.append(svgEl("line", { x1: ml, x2: ml + pw, y1: Y(opt.hline.y), y2: Y(opt.hline.y), stroke: "var(--text-muted)", "stroke-width": 1 }));
+    svg.append(svgEl("text", { x: ml + 4, y: Y(opt.hline.y) - 5, "font-size": 11, fill: "var(--text-muted)" }, opt.hline.label));
+  }
+
+  // lines + markers
+  for (const s of opt.series) {
+    const d = s.ys.map((v, i) => (i ? "L" : "M") + X(opt.xs[i]).toFixed(1) + "," + Y(v).toFixed(1)).join("");
+    svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    s.ys.forEach((v, i) => svg.append(svgEl("circle", { cx: X(opt.xs[i]), cy: Y(v), r: 3, fill: s.color, stroke: "var(--surface-1)", "stroke-width": 1.5 })));
+  }
+
+  // breakpoint markers
+  for (const mk of opt.markers || []) {
+    const s = opt.series[mk.s], i = opt.xs.indexOf(mk.x);
+    if (!s || i < 0) continue;
+    const cx = X(mk.x), cy = Y(s.ys[i]);
+    svg.append(svgEl("circle", { cx, cy, r: 8, fill: "none", stroke: "var(--surface-1)", "stroke-width": 4 }));
+    svg.append(svgEl("circle", { cx, cy, r: 8, fill: "none", stroke: "var(--text-primary)", "stroke-width": 1.5 }));
+    svg.append(svgEl("text", { x: cx, y: cy + (mk.below ? 24 : -14), "text-anchor": "middle", "font-size": 11, "font-weight": 600, fill: "var(--text-primary)" }, mk.label));
+  }
+
+  // direct labels at line ends, nudged apart so they don't collide
+  const ends = opt.series.map(s => ({ name: s.short || s.name, color: s.color, y: Y(s.ys[s.ys.length - 1]) }))
+    .sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 13) ends[i].y = ends[i - 1].y + 13;
+  for (const e of ends) {
+    svg.append(svgEl("rect", { x: ml + pw + 8, y: e.y - 1.5, width: 8, height: 3, rx: 1.5, fill: e.color }));
+    svg.append(svgEl("text", { x: ml + pw + 20, y: e.y + 4, "font-size": 11, fill: "var(--text-secondary)" }, e.name));
+  }
+
+  // hover: crosshair + tooltip snapped to the nearest entity count
+  const cross = svgEl("line", { y1: mt, y2: mt + ph, stroke: "var(--text-muted)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cross);
+  const hit = svgEl("rect", { x: ml, y: mt, width: pw, height: ph, fill: "transparent" });
+  svg.append(hit);
+  wrap.append(svg);
+  const tip = el("div", { class: "tip" });
+  wrap.append(tip);
+
+  const show = ev => {
+    const r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    let best = 0;
+    opt.xs.forEach((n, i) => { if (Math.abs(X(n) - sx) < Math.abs(X(opt.xs[best]) - sx)) best = i; });
+    const x = X(opt.xs[best]);
+    cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
+    tip.replaceChildren();
+    tip.append(el("div", { class: "h" }, opt.tipTitle(best)));
+    for (const s of opt.series) {
+      const row = el("div", { class: "r" }); const dot = el("i"); dot.style.background = s.color;
+      row.append(dot, s.name, el("b", {}, opt.fmtValue(s.ys[best])));
+      tip.append(row);
+    }
+    tip.style.display = "block";
+    const px = x * r.width / W, wr = wrap.getBoundingClientRect().width;
+    tip.style.left = Math.min(Math.max(px + 12, 0), wr - tip.offsetWidth) + "px";
+    tip.style.top = (mt * r.height / H + 28) + "px";
+    if (px + 12 + tip.offsetWidth > wr) tip.style.left = Math.max(px - 12 - tip.offsetWidth, 0) + "px";
+  };
+  hit.addEventListener("pointermove", show);
+  hit.addEventListener("pointerdown", show);
+  hit.addEventListener("pointerleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+  return wrap;
+}
+
+const methodColors = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+const methodShort = ["OOP", "for_each", "chunk", "SoA"];
+const xsOf = s => s.points.map(p => p.n);
+const nsPerEntity = (p, m) => p.ns[m] / p.n;
+const speedup = (p, m) => p.ns[OOP] / p.ns[m];
+
+// ---- header / tiles ----
+const c = D.caches;
+document.getElementById("meta").textContent =
+  `${D.cpu} · L1d ${fmtBytes(c.l1)} · L2 ${fmtBytes(c.l2)} · L3 ${c.l3 ? fmtBytes(c.l3) : "none"}` +
+  `${c.detected ? "" : " (defaults — not detected)"} · ${D.generated} · ${D.run}`;
+
+const base = D.series.find(s => s.axis === "baseline") || D.series[0];
+const tiles = document.getElementById("tiles");
+const tile = (k, v, d) => { const t = el("div", { class: "tile" }); t.append(el("div", { class: "k" }, k), el("div", { class: "v" }, v), el("div", { class: "d" }, d)); tiles.append(t); };
+const bpText = bp => !bp.found ? ["never", "not ≥ 5% faster across the top of the range"]
+  : bp.everywhere ? ["always", "faster at every N measured"]
+  : ["N = " + fmtN(bp.n), "OOP working set " + fmtBytes(bp.oopBytes) + " (" + level(bp.oopBytes) + ")"];
+if (base && base.points.length) {
+  const last = base.points[base.points.length - 1];
+  const [v1, d1] = bpText(base.breakpoints[CH]);
+  tile("for_each_chunk breakpoint", v1, d1);
+  const [v2, d2] = bpText(base.breakpoints[FE]);
+  tile("for_each breakpoint", v2, d2);
+  tile("chunk speedup at N = " + fmtN(last.n), fmtX(speedup(last, CH)), `${fmtNs(nsPerEntity(last, OOP))} → ${fmtNs(nsPerEntity(last, CH))} ns per entity`);
+  tile("chunk vs. for_each at N = " + fmtN(last.n), fmtX(last.ns[FE] / last.ns[CH]), "library overhead the fast path removes");
+  tiles.append(el("p", { class: "meta", style: "grid-column: 1 / -1; margin: 0" }, "Tiles use the baseline series: " + base.label + "."));
+}
+
+// ---- overview: speedup vs N, one chart per swept axis ----
+const overview = document.getElementById("overview");
+const axes = [
+  ["size", "Object size", s => s.objBytes + " B", s => s.objBytes],
+  ["move", "Share of objects that move", s => s.movePct + "% moving", s => s.movePct],
+  ["frag", "Heap layout", s => s.frag, s => ["sequential", "shuffled", "interleaved"].indexOf(s.frag)],
+  ["full", "All configurations", s => s.label, () => 0],
+];
+const groups = axes.map(([axis, title, name, order]) => {
+  const members = D.series.filter(s => s.axis === axis || (s.axis === "baseline" && axis !== "full"));
+  members.sort((a, b) => order(a) - order(b));
+  return { axis, title, name, members };
+}).filter(g => g.members.length > 1 && (g.axis !== "full" || g.members.length <= 5));
+
+if (groups.length) {
+  overview.append(el("h2", {}, "Speedup over OOP, by variable"));
+  overview.append(el("p", {}, "Each chart changes one variable from the baseline (" + base.label + "). Above the 1× line the ECS is faster than the GameObject* loop."));
+  const controls = el("div", { class: "controls" }, "Method: ");
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Method" });
+  controls.append(seg);
+  overview.append(controls);
+  const holder = el("div", { class: "grid2" });
+  overview.append(holder);
+
+  let current = CH;
+  const draw = () => {
+    holder.replaceChildren();
+    for (const g of groups) {
+      const card = el("div", { class: "card" });
+      card.append(el("h3", {}, g.title));
+      card.append(el("div", { class: "sub" }, M[current].name + " speedup vs. OOP (log scale)"));
+      const xs = xsOf(g.members.reduce((a, b) => b.points.length > a.points.length ? b : a));
+      const series = g.members.map((s, i) => ({
+        name: g.name(s), color: `var(--series-${i + 1})`,
+        ys: xs.map(n => { const p = s.points.find(q => q.n === n); return p ? speedup(p, current) : NaN; }),
+      })).map(s => ({ ...s, ys: s.ys.map(v => isNaN(v) ? null : v) }));
+      // a series may stop early (memory cap) -- trim trailing gaps per series
+      const usable = series.every(s => s.ys.every(v => v !== null));
+      const xsU = usable ? xs : xs.slice(0, Math.min(...series.map(s => s.ys.indexOf(null) < 0 ? s.ys.length : s.ys.indexOf(null))));
+      const ser = series.map(s => ({ ...s, ys: s.ys.slice(0, xsU.length) }));
+      card.append(lineChart({
+        title: g.title, xs: xsU, series: ser, width: 480, height: 320, hline: { y: 1, label: "1× (same as OOP)" },
+        vlines: g.axis === "size" || g.axis === "full" ? [] : cacheLines(base.objBytes),
+        yLabel: "× faster", fmtTick: t => t + "×", fmtValue: fmtX,
+        tipTitle: i => "N = " + fmtN(xsU[i]),
+      }));
+      if (g.axis === "size") card.append(el("div", { class: "sub" }, "Cache boundaries depend on object size, so they're drawn on the per-series charts below."));
+      holder.append(card);
+    }
+  };
+  [CH, FE, SOA].forEach(m => {
+    const b = el("button", { type: "button", "aria-pressed": String(m === current) }, methodShort[m]);
+    b.addEventListener("click", () => { current = m; seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); draw(); });
+    seg.append(b);
+  });
+  draw();
+}
+
+// ---- details: ns/entity per series ----
+const details = document.getElementById("details");
+details.append(el("h2", {}, "Time per entity, every series"));
+details.append(el("p", {}, "ns per entity per frame (all entities, moving or not), median of the timed samples. Rings mark the breakpoints."));
+for (const s of D.series) {
+  if (!s.points.length) continue;
+  const card = el("div", { class: "card" });
+  card.append(el("h3", {}, s.label));
+  const bpc = s.breakpoints[CH], bpf = s.breakpoints[FE];
+  const bline = b => !b.found ? "never" : b.everywhere ? "at every N" : "from N = " + fmtN(b.n) + " (" + level(b.oopBytes) + ")";
+  card.append(el("div", { class: "sub" }, `[${s.axis}] chunk breakpoint ${bline(bpc)} · for_each breakpoint ${bline(bpf)}`));
+  const xs = xsOf(s);
+  const markers = [];
+  if (bpc.found && !bpc.everywhere) markers.push({ s: CH, x: bpc.n, label: "chunk", below: true });
+  if (bpf.found && !bpf.everywhere) markers.push({ s: FE, x: bpf.n, label: "for_each" });
+  card.append(lineChart({
+    title: s.label, xs,
+    series: M.map((m, i) => ({ name: m.name, short: methodShort[i], color: methodColors[i], ys: s.points.map(p => nsPerEntity(p, i)) })),
+    vlines: cacheLines(s.objBytes), markers,
+    yLabel: "ns / entity", fmtTick: t => String(t), fmtValue: v => fmtNs(v) + " ns",
+    tipTitle: i => `N = ${fmtN(xs[i])} · OOP ${fmtBytes(s.points[i].oopBytes)} (${level(s.points[i].oopBytes)})`,
+  }));
+
+  const det = el("details");
+  det.append(el("summary", {}, "Data table"));
+  const wrapT = el("div", { class: "tablewrap" });
+  const table = el("table");
+  const head = el("tr");
+  ["N", "movers", "OOP bytes", "fits", ...methodShort.map(n => n + " ns/ent"), "for_each ×", "chunk ×", "SoA ×"].forEach(h => head.append(el("th", {}, h)));
+  table.append(head);
+  for (const p of s.points) {
+    const tr = el("tr");
+    [fmtN(p.n), fmtN(p.movers), fmtBytes(p.oopBytes), level(p.oopBytes), ...[0, 1, 2, 3].map(m => fmtNs(nsPerEntity(p, m)))]
+      .forEach(v => tr.append(el("td", {}, v)));
+    [FE, CH, SOA].forEach(m => { const v = speedup(p, m); tr.append(el("td", v >= 1.05 ? { class: "win" } : {}, fmtX(v))); });
+    table.append(tr);
+  }
+  wrapT.append(table); det.append(wrapT); card.append(det);
+  details.append(card);
+}
+})();
+</script>
+</body>
+</html>
